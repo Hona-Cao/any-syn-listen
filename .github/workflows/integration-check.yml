@@ -1,0 +1,35 @@
+name: Integration typechecks (no Codex)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - '.github/workflows/integration-check.yml'
+  workflow_dispatch:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Typecheck shared app
+        run: pnpm exec tsc --noEmit -p packages/shared/app/tsconfig.json
+      - name: Typecheck desktop
+        run: pnpm exec tsc --noEmit -p packages/desktop/tsconfig.json
+      - name: Typecheck web server
+        run: pnpm exec tsc --noEmit -p packages/web-server/tsconfig.json
+      - name: Svelte UI typecheck
+        run: pnpm --filter view-main check
