@@ -1,19 +1,72 @@
 import { getSettings } from '../../../common'
 import { syncLXWebDAV } from '../external/lxWebdav'
 import { syncNeteaseAccount } from '../external/netease'
+import { refreshNeteaseCookie } from '../external/neteaseSession'
 import { sendSyncWebDAVStatus } from './shared'
 import { state } from './state'
 import { cancelSyncWebDAV, getSyncWebDAVState, runSyncWebDAV } from './sync'
 
-const handleSync = async () => {
-  const state = getSyncWebDAVState()
-  if (state.status !== 'idle' && state.status !== 'error') return
+export interface NeteaseSessionProvider {
+  getCookie: () => Promise<string>
+  saveCookie: (cookie: string) => Promise<void>
+}
+let neteaseSessionProvider: NeteaseSessionProvider | undefined
+export const configureNeteaseSessionProvider = (provider: NeteaseSessionProvider) => {
+  neteaseSessionProvider = provider
+}
+const NETEASE_LIST_INTERVAL = 3 * 60 * 60 * 1000
+const NETEASE_REFRESH_INTERVAL = 18 * 60 * 60 * 1000
+const NETEASE_RETRY_INTERVAL = 30 * 60 * 1000
+let neteaseLastSync = 0
+let neteaseLastTry = 0
+let neteaseLastRefresh = 0
+let neteaseLastCookie = ''
+let neteaseSyncInProgress = false
+
+const syncNeteaseIfDue = async () => {
   const settings = getSettings()
-  if (settings['sync.netease.enable'] && settings['sync.netease.cookie']) {
-    await syncNeteaseAccount(settings['sync.netease.cookie']).catch((err: Error) => {
-      console.warn('[NetEase] Failed to import account playlists:', err.message)
-    })
+  if (!settings['sync.netease.enable'] || neteaseSyncInProgress) return
+  let cookie = await neteaseSessionProvider?.getCookie() ?? settings['sync.netease.cookie']
+  if (!cookie) return
+  if (cookie !== neteaseLastCookie) {
+    neteaseLastCookie = cookie
+    neteaseLastSync = 0
+    neteaseLastTry = 0
+    neteaseLastRefresh = 0
   }
+  const now = Date.now()
+  if (now - neteaseLastSync < NETEASE_LIST_INTERVAL || now - neteaseLastTry < NETEASE_RETRY_INTERVAL) return
+  neteaseSyncInProgress = true
+  neteaseLastTry = now
+  try {
+    // Attempt once per 18 hours; a QR/webview cookie may not be refreshable.
+    // Never re-login or retry requests rapidly after platform errors.
+    if (now - neteaseLastRefresh >= NETEASE_REFRESH_INTERVAL) {
+      neteaseLastRefresh = now
+      try {
+        const refreshed = await refreshNeteaseCookie(cookie)
+        if (refreshed !== cookie && neteaseSessionProvider) {
+          await neteaseSessionProvider.saveCookie(refreshed)
+          cookie = refreshed
+          neteaseLastCookie = refreshed
+        }
+      } catch {
+        console.warn('[NetEase] Refresh unavailable; existing session will be checked')
+      }
+    }
+    await syncNeteaseAccount(cookie)
+    neteaseLastSync = Date.now()
+  } catch (err) {
+    console.warn('[NetEase] Account synchronization failed:', (err as Error).message)
+  } finally {
+    neteaseSyncInProgress = false
+  }
+}
+const handleSync = async () => {
+  const current = getSyncWebDAVState()
+  if (current.status !== 'idle' && current.status !== 'error') return
+  const settings = getSettings()
+  await syncNeteaseIfDue()
   if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
     await syncLXWebDAV({
       url: settings['sync.webdav.url'],
@@ -25,20 +78,21 @@ const handleSync = async () => {
     })
   }
   if (
-    getSettings()['sync.webdav.enable'] &&
-    !!getSettings()['sync.webdav.url'] &&
-    !!getSettings()['sync.webdav.username'] &&
-    !!getSettings()['sync.webdav.path'] &&
-    (getSettings()['sync.webdav.syncEnable.dislike'] || getSettings()['sync.webdav.syncEnable.list'])
+    settings['sync.webdav.enable'] &&
+    !!settings['sync.webdav.url'] &&
+    !!settings['sync.webdav.username'] &&
+    !!settings['sync.webdav.path'] &&
+    (settings['sync.webdav.syncEnable.dislike'] || settings['sync.webdav.syncEnable.list'])
   ) {
     await runSyncWebDAV({
-      url: getSettings()['sync.webdav.url'],
-      username: getSettings()['sync.webdav.username'],
-      password: getSettings()['sync.webdav.password'],
-      path: getSettings()['sync.webdav.path'],
+      url: settings['sync.webdav.url'],
+      username: settings['sync.webdav.username'],
+      password: settings['sync.webdav.password'],
+      path: settings['sync.webdav.path'],
     })
   }
 }
+
 let webdavSyncTaskTimeout: NodeJS.Timeout | undefined
 export const runWebDAVSyncTask = (immediately?: boolean) => {
   if (webdavSyncTaskTimeout) {
