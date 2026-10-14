@@ -1,4 +1,5 @@
 import { getSettings } from '../../../common'
+import { syncLXWebDAV } from '../external/lxWebdav'
 import { sendSyncWebDAVStatus } from './shared'
 import { state } from './state'
 import { cancelSyncWebDAV, getSyncWebDAVState, runSyncWebDAV } from './sync'
@@ -6,6 +7,17 @@ import { cancelSyncWebDAV, getSyncWebDAVState, runSyncWebDAV } from './sync'
 const handleSync = async () => {
   const state = getSyncWebDAVState()
   if (state.status !== 'idle' && state.status !== 'error') return
+  const settings = getSettings()
+  if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
+    await syncLXWebDAV({
+      url: settings['sync.webdav.url'],
+      username: settings['sync.webdav.username'],
+      password: settings['sync.webdav.password'],
+      path: settings['sync.lxWebdav.path'],
+    }).catch((err: Error) => {
+      console.warn('[LX N WebDAV] Failed to read remote playlist:', err.message)
+    })
+  }
   if (
     getSettings()['sync.webdav.enable'] &&
     !!getSettings()['sync.webdav.url'] &&
