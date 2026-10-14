@@ -32,15 +32,22 @@ export const syncNeteaseAccount = async (cookie: string) => {
     const page = await post<{ code: number; playlist: Array<{ id: number; name: string }> }>(
       'user/playlist', cookie, { uid, offset, limit: 200, total: true, includeVideo: true }
     )
+    if (!Array.isArray(page.playlist)) throw new Error('NetEase returned invalid account playlists')
     playlists.push(...page.playlist)
     if (page.playlist.length < 200) break
   }
   const mirrors: MirrorPlaylist[] = []
   for (const item of playlists) {
-    const detail = await post<{ code: number; playlist?: { trackIds?: Array<{ id: number }> } }>(
+    const detail = await post<{ code: number; playlist?: { trackIds?: Array<{ id: number }>; trackCount?: number } }>(
       'v3/playlist/detail', cookie, { id: item.id, n: 100000, s: 8 }
     )
-    const ids = detail.playlist?.trackIds?.map((track) => track.id) ?? []
+    if (!Array.isArray(detail.playlist?.trackIds)) {
+      throw new Error('NetEase playlist trackIds missing; refuse empty overwrite')
+    }
+    const ids = detail.playlist.trackIds.map((track) => track.id)
+    if (detail.playlist.trackCount != null && ids.length < detail.playlist.trackCount) {
+      throw new Error('NetEase playlist metadata incomplete; preserve existing mirror')
+    }
     const songs: AnyListen.Music.MusicInfoOnline[] = []
     for (let i = 0; i < ids.length; i += 300) {
       const batch = ids.slice(i, i + 300)
