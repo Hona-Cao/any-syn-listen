@@ -110,3 +110,56 @@ test('Kugou QR flow requires real signed response then accepts authorization', a
   assert.equal(result.account.userId, '7654321')
   assert.equal(count, 2)
 })
+
+
+test('Kugou hash-only cloud songs obtain metadata before mirroring', async (t) => {
+  const requested = []
+  const hash = 'C'.repeat(32)
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const target = new URL(url)
+    requested.push(target.pathname)
+    if (target.pathname === '/v7/get_all_list') {
+      return new Response(JSON.stringify({
+        status: 1, data: { total: 1, info: [{ listid: 123, name: '测试云歌单', count: 1 }] },
+      }), { status: 200 })
+    }
+    if (target.pathname === '/v4/get_list_all_file_v3') {
+      return new Response(JSON.stringify({
+        status: 1, data: { count: 1, info: [{ hash }] },
+      }), { status: 200 })
+    }
+    assert.equal(target.pathname, '/v2/album_audio/audio')
+    const body = JSON.parse(init.body)
+    assert.equal(body.data[0].hash, hash)
+    return new Response(JSON.stringify({
+      error_code: 0, data: [[{
+        songname: '云端元数据歌曲',
+        author_name: '歌手 A',
+        audio_info: { audio_id: 8888, hash, timelength: '142000' },
+        album_info: { album_id: 12, album_name: '元数据专辑' },
+      }]],
+    }), { status: 200 })
+  })
+  const results = await readKugouPlaylists({ userId: '1234', token: 'secret', mid: 'a'.repeat(32) })
+  assert.equal(results[0].list[0].id, 'kg_8888_' + hash)
+  assert.equal(results[0].list[0].name, '云端元数据歌曲')
+  assert.equal(results[0].list[0].interval, '02:22')
+  assert.deepEqual(requested, ['/v7/get_all_list', '/v4/get_list_all_file_v3', '/v2/album_audio/audio'])
+})
+
+test('Kugou malformed metadata prevents destructive updates', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const endpoint = new URL(url).pathname
+    if (endpoint === '/v7/get_all_list') {
+      return new Response(JSON.stringify({ status: 1, data: { total: 1, info: [{ listid: 3, name: '目录', count: 1 }] } }), { status: 200 })
+    }
+    if (endpoint === '/v4/get_list_all_file_v3') {
+      return new Response(JSON.stringify({ status: 1, data: { count: 1, info: [{ hash: 'D'.repeat(32) }] } }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ error_code: 0, data: [] }), { status: 200 })
+  })
+  await assert.rejects(
+    readKugouPlaylists({ userId: '1234', token: 'secret', mid: 'a'.repeat(32) }),
+    /元数据返回不完整/
+  )
+})
