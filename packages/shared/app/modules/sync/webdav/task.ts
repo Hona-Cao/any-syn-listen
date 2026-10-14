@@ -1,5 +1,7 @@
 import { getSettings } from '../../../common'
 import { syncLXWebDAV } from '../external/lxWebdav'
+import { syncQQMusicAccount, type QQMusicCredential } from '../external/qqMusic'
+import { syncKugouAccount, type KugouAccount } from '../external/kugouMusic'
 import { syncNeteaseAccount } from '../external/netease'
 import { refreshNeteaseCookie } from '../external/neteaseSession'
 import { sendSyncWebDAVStatus } from './shared'
@@ -15,6 +17,61 @@ let neteaseSessionProvider: NeteaseSessionProvider | undefined
 export const configureNeteaseSessionProvider = (provider: NeteaseSessionProvider) => {
   neteaseSessionProvider = provider
 }
+export interface OtherMusicSessionProvider {
+  getQQ: () => Promise<QQMusicCredential | null>
+  getKugou: () => Promise<KugouAccount | null>
+}
+let otherMusicSessionProvider: OtherMusicSessionProvider | undefined
+export const configureOtherMusicSessionProvider = (provider: OtherMusicSessionProvider) => {
+  otherMusicSessionProvider = provider
+}
+const OTHER_SYNC_INTERVAL = 3 * 60 * 60 * 1000
+const OTHER_RETRY_INTERVAL = 30 * 60 * 1000
+const otherStatus = {
+  qq: { identity: '', lastSync: 0, lastTry: 0, running: false },
+  kugou: { identity: '', lastSync: 0, lastTry: 0, running: false },
+}
+const syncOtherMusicIfDue = async () => {
+  if (!otherMusicSessionProvider) return
+  const settings = getSettings()
+  const run = async (
+    key: keyof typeof otherStatus,
+    enabled: boolean,
+    credential: QQMusicCredential | KugouAccount | null,
+    sync: () => Promise<unknown>
+  ) => {
+    if (!enabled || !credential) return
+    const status = otherStatus[key]
+    if (status.running) return
+    const identity = JSON.stringify(credential)
+    if (identity !== status.identity) {
+      status.identity = identity
+      status.lastSync = 0
+      status.lastTry = 0
+    }
+    const now = Date.now()
+    if (now - status.lastTry < OTHER_RETRY_INTERVAL || now - status.lastSync < OTHER_SYNC_INTERVAL) return
+    status.lastTry = now
+    status.running = true
+    try {
+      await sync()
+      status.lastSync = Date.now()
+    } catch (err) {
+      console.warn('[' + key + '] Account mirror failed:', (err as Error).message)
+    } finally {
+      status.running = false
+    }
+  }
+  const [qq, kg] = await Promise.all([
+    settings['sync.qq.enable'] ? otherMusicSessionProvider.getQQ() : Promise.resolve(null),
+    settings['sync.kugou.enable'] ? otherMusicSessionProvider.getKugou() : Promise.resolve(null),
+  ])
+  await Promise.all([
+    run('qq', settings['sync.qq.enable'], qq, () => syncQQMusicAccount(qq as QQMusicCredential)),
+    run('kugou', settings['sync.kugou.enable'], kg, () => syncKugouAccount(kg as KugouAccount)),
+  ])
+}
+
 const NETEASE_LIST_INTERVAL = 3 * 60 * 60 * 1000
 const NETEASE_REFRESH_INTERVAL = 18 * 60 * 60 * 1000
 const NETEASE_RETRY_INTERVAL = 30 * 60 * 1000
@@ -75,7 +132,7 @@ const handleSync = async () => {
   const current = getSyncWebDAVState()
   if (current.status !== 'idle' && current.status !== 'error') return
   const settings = getSettings()
-  await syncNeteaseIfDue()
+  await Promise.all([syncNeteaseIfDue(), syncOtherMusicIfDue()])
   if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
     await syncLXWebDAV({
       url: settings['sync.webdav.url'],
