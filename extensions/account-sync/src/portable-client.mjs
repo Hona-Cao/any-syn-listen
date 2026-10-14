@@ -2,7 +2,7 @@ import {NetEaseAccount} from './portable-netease.mjs'
 import {QQAccount} from './portable-qq.mjs'
 import {KugouAccount} from './portable-kugou.mjs'
 import {readLX, validateDAV} from './portable-lx.mjs'
-import {cleanMessage} from './portable-utils.mjs'
+import {cleanMessage,cookiePairs} from './portable-utils.mjs'
 
 const FILE='portable-accounts.json'
 const DAVFILE='portable-webdav.json'
@@ -21,6 +21,7 @@ export class PortableClient {
     this.lastAttempt={}
     this.lastSuccess={}
     this.pendingSync=null
+    this.pendingDAVPassword=null
   }
   async load() {
     for(const [file,field] of [[FILE,'credentials'],[DAVFILE,'webdav']]){
@@ -36,27 +37,55 @@ export class PortableClient {
     }
   }
   async save(){await this.api.storage.writeFile(FILE,JSON.stringify(this.credentials))}
-  async configureDAV() {
-    const url=await this.api.app.showInputDialog({title:'WebDAV 设置',placeholder:'https://dav.example.com/dav'})
-    if(!url)return false
-    const username=await this.api.app.showInputDialog({title:'WebDAV 设置',placeholder:'用户名'})
-    if(!username)return false
-    const password=await this.api.app.showInputDialog({title:'WebDAV 设置',placeholder:'应用密码',password:true})
-    if(!password)return false
-    const folder=await this.api.app.showInputDialog({title:'WebDAV 设置',value:'/LX_Music',placeholder:'歌单目录'})
-    if(!folder)return false
-    const cfg={url:url.trim(),username:username.trim(),password,folder:folder.trim()}
+  async configureDAV(cfg) {
     validateDAV(cfg)
-    await this.api.storage.writeFile(DAVFILE,JSON.stringify(cfg))
-    this.webdav=cfg
+    const normalized={url:cfg.url.trim(),username:cfg.username.trim(),password:cfg.password,
+      folder:String(cfg.folder||'/LX_Music').trim()}
+    // Password lives in extension private storage, not the visible settings fields.
+    await this.api.storage.writeFile(DAVFILE,JSON.stringify(normalized))
+    this.webdav=normalized
     this.lastAttempt.lx=0
     return true
   }
-  async login(platform){
+  async clearDAV() {
+    this.webdav=null
+    this.lastAttempt.lx=0
+    delete this.status.lx
+    if(await this.api.storage.fileExists(DAVFILE))
+      await this.api.storage.removeFile(DAVFILE)
+  }
+  async importCookie(platform,cookieText) {
+    const cookie=String(cookieText??'').trim()
+    if(cookie.length>15000)throw new Error('登录状态内容过长')
+    const values=cookiePairs(cookie)
+    if(platform==='netease'){
+      if(!values.get('MUSIC_U'))throw new Error('没有找到网易云 MUSIC_U，请从已登录的官方网站获取完整 Cookie')
+      await this.providers.netease.uid(cookie)
+      this.credentials.netease=cookie
+    }else if(platform==='qqmusic'){
+      const musicId=String(values.get('qqmusic_uin')??values.get('musicid')??values.get('uin')??'').replace(/^o/,'')
+      const musicKey=values.get('qqmusic_key')??values.get('qm_keyst')??''
+      if(!/^\d{4,20}$/.test(musicId)||!musicKey)throw new Error('QQ Cookie 缺少 musicid/qqmusic_key，无法导入')
+      const credential={musicId,musicKey,cookie}
+      await this.providers.qqmusic.validate(credential)
+      this.credentials.qqmusic=credential
+    }else if(platform==='kugou'){
+      const userId=values.get('userid')??'',token=values.get('token')??''
+      const mid=values.get('KUGOU_API_MID')??values.get('mid')??''
+      if(!/^\d{1,20}$/.test(userId)||!token||!/^[0-9a-f]{32}$/i.test(mid))
+        throw new Error('酷狗登录状态必须包含 userid、token、mid')
+      this.credentials.kugou={userId,token,mid}
+    }else throw new Error('不支持的音乐平台')
+    await this.save()
+    this.status[platform]={connected:true,stage:'ready'}
+    this.lastAttempt[platform]=0
+    return true
+  }
+  async login(platform,onStatus){
     const provider=this.providers[platform]
     if(!provider)throw new Error('未找到音乐平台')
     if(platform==='qqmusic'){
-      const credential=await provider.loginWX()
+      const credential=await provider.loginWX(onStatus)
       if(!credential)return false
       await provider.validate(credential)
       this.credentials.qqmusic=credential

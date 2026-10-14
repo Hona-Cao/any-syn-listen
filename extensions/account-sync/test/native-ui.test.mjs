@@ -9,7 +9,7 @@ function harness(){
  const api={env:{publicKey:'public-test-key'},logcat:{warn(){},error(){}},
   configuration:{getConfigs:async keys=>keys.map(k=>configs.get(k)),setConfigs:async obj=>{for(const [k,v] of Object.entries(obj))configs.set(k,v)},onConfigChanged:()=>()=>{}},
   registerResourceAction:()=>{},command:{registerCommand:async(k,fn)=>{commands.set(k,fn)}},
-  storage:{fileExists:async key=>files.has(key),readFile:async key=>files.get(key),writeFile:async(key,val)=>{files.set(key,val)}},
+  storage:{fileExists:async key=>files.has(key),readFile:async key=>files.get(key),writeFile:async(key,val)=>{files.set(key,val)},removeFile:async key=>{files.delete(key)}},
   utils:{crypto:{sha256:async s=>createHash('sha256').update(s).digest('hex')}},
   app:{showMessage:async (text,options)=>{messages.push({text,options});return answer},showInputDialog:async()=>''},
   musicList:{getAllUserLists:async()=>({userList:[...lists.values()]}),getListMusics:async id=>musics.get(id)||[],onListAction:()=>()=>{},listAction:async action=>{
@@ -23,18 +23,20 @@ function harness(){
 }
 test('native manifest declares settings with the official CheckboxMultiple and command schema',async()=>{
  const manifest=JSON.parse(await fs.readFile('dist/manifest.json','utf8'))
- assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.1')
+ assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.2')
  const settings=manifest.contributes.settings
  assert.ok(settings.some(x=>x.type==='configCheckboxMultiple'&&x.actionCommands.includes('loginNetease')))
  assert.equal(settings.some(x=>x.field==='selectedPlaylists'),false)
  assert.ok(manifest.contributes.resource.some(x=>x.id==='lx'&&x.resource.includes('songlist')))
  assert.ok(settings.every(x=>['configCheckboxMultiple','input'].includes(x.type)))
- assert.equal(settings.some(x=>/cookie|password/i.test(x.field)),false)
+ assert.ok(settings.some(x=>x.field==='webdavPassword'&&x.type==='input'))
+ assert.ok(['webdavUrl','webdavUsername','webdavPassword','webdavFolder'].every(
+  field=>settings.some(x=>x.field===field&&x.type==='input')))
 })
 test('plugin populates native playlist fields without a bridge or separate GUI',async()=>{
  const h=harness();h.lists.set('a',{id:'a',name:'网易云·我喜欢',type:'general',meta:{}})
  const c=new NativeController(h.api);await c.start();clearInterval(c.timer)
- assert.equal(h.commands.size,6)
+ assert.equal(h.commands.size,12)
  assert.deepEqual(h.configs.get('playlistItems'),[{id:'a',name:'网易云·我喜欢'}])
  assert.equal(h.network.length,0)
  assert.equal(h.commands.has('connect'),false);assert.equal(h.commands.has('manage'),false)
@@ -73,4 +75,31 @@ test('native extension never asks the bridge to open a management UI',async()=>{
  await assert.rejects(fs.access('helper-dist/ui/index.html'))
 })
 
-test('stock AnyListen with no musicList still loads native settings and registers resources',async()=>{const h=harness();delete h.api.musicList;let registered;h.api.registerResourceAction=x=>{registered=x};const c=new NativeController(h.api);await c.start();clearInterval(c.timer);assert.equal(h.commands.size,6);assert.ok(registered.songlist);assert.equal(h.configs.get('accountItems').length,3);assert.equal(h.network.length,0)})
+test('stock AnyListen with no musicList still loads native settings and registers resources',async()=>{const h=harness();delete h.api.musicList;let registered;h.api.registerResourceAction=x=>{registered=x};const c=new NativeController(h.api);await c.start();clearInterval(c.timer);assert.equal(h.commands.size,12);assert.ok(registered.songlist);assert.equal(h.configs.get('accountItems').length,3);assert.equal(h.network.length,0)})
+
+test('WebDAV connection edits all fields inline and masks password after saving',async()=>{
+ const h=harness()
+ const c=new NativeController(h.api)
+ await c.start();clearInterval(c.timer)
+ h.configs.set('webdavUrl','https://dav.example.com/dav')
+ h.configs.set('webdavUsername','user@example.com')
+ h.configs.set('webdavPassword','special-test-secret')
+ h.configs.set('webdavFolder','/LX_Music')
+ await c.configureWebdav()
+ const saved=JSON.parse(h.files.get('portable-webdav.json'))
+ assert.equal(saved.password,'special-test-secret')
+ assert.equal(h.configs.get('webdavPassword'),'●●●●●●●●')
+ assert.equal(h.messages.some(m=>m.text==='WebDAV 已连接'),true)
+ assert.equal(h.network.some(n=>n.url.includes('127.0.0.1')),false)
+ h.setAnswer(1)
+ await c.clearWebdav()
+ assert.equal(h.files.has('portable-webdav.json'),false)
+ assert.equal(h.configs.get('webdavUrl'),'')
+ assert.equal(h.configs.get('webdavPassword'),'')
+})
+test('NetEase website login can be cancelled without phone SMS',async()=>{
+ const h=harness();const c=new NativeController(h.api)
+ await c.neteaseLogin()
+ assert.equal(h.network.length,0)
+ assert.ok(h.messages[0].options.buttons.some(x=>x.link==='https://music.163.com/#/login'))
+})

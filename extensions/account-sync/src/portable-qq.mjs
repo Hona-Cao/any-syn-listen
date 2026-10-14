@@ -1,4 +1,4 @@
-import {platformRequest,asObject,stringOf,songDuration,wait,encodeQuery} from './portable-utils.mjs'
+import {platformRequest,asObject,stringOf,songDuration,wait,encodeQuery,cookiePairs} from './portable-utils.mjs'
 
 const endpoint='https://u.y.qq.com/cgi-bin/musicu.fcg'
 const wxAppId='wx48db31d50e334801'
@@ -37,9 +37,9 @@ export class QQAccount {
       ...(token?{tmeLoginType:token.startsWith('W_X')?1:2}:{}),
       ...commOverrides
     }
-    const cookie = token&&id ? [
+    const cookie = cred.cookie || (token&&id ? [
       'uin='+id,'musicid='+id,'qqmusic_key='+token,'qm_keyst='+token,
-    ].join('; ') : ''
+    ].join('; ') : '')
     const {body}=await platformRequest(this.api,endpoint,{
       method:'POST',
       json:{comm,[key]:{module,method,param}},
@@ -51,7 +51,7 @@ export class QQAccount {
     }
     return result.data
   }
-  async loginWX(){
+  async loginWX(onStatus=()=>{}){
     const qrURL = 'https://open.weixin.qq.com/connect/qrconnect?'
     const qrParams = {
       appid:wxAppId,
@@ -66,12 +66,15 @@ export class QQAccount {
     if(!uuid||!/^[a-zA-Z0-9_@+=-]{10,200}$/.test(uuid))
       throw new Error('微信登录暂时无法生成二维码')
     const imageURL='https://open.weixin.qq.com/connect/qrcode/'+encodeURIComponent(uuid)
-    const choice=await this.api.app.showMessage('点击“打开微信二维码”，在浏览器中用微信扫描并确认。',{modal:true,buttons:[
+    onStatus('authorizing')
+    const choice=await this.api.app.showMessage('请在浏览器打开二维码，用微信扫码并在手机上确认。确认后会自动返回登录结果。',{modal:true,buttons:[
       {text:'取消'},{text:'打开微信二维码',link:imageURL}
     ]})
     if(choice!==1)return null
+    onStatus('authorizing')
     let code=null
-    const deadline=Date.now()+115000
+    const deadline=Date.now()+90000
+    let networkFailures=0
     while(Date.now()<deadline){
       await wait(1800)
       let result
@@ -80,15 +83,20 @@ export class QQAccount {
           'https://lp.open.weixin.qq.com/connect/l/qrconnect?uuid='+encodeURIComponent(uuid)+'&_='+Date.now(),
           {method:'GET',timeout:12000})
       }catch{
+        networkFailures++
+        if(networkFailures>=4)throw new Error('微信扫码状态无法查询，请检查网络或代理后重试')
         continue
       }
+      networkFailures=0
       const body=typeof result.body==='string'?result.body:''
       const match=/window\.wx_errcode=(\d+);window\.wx_code='([^']*)'/.exec(body)
       if(!match)continue
       if(match[1]==='200' && match[2]){code=match[2];break}
+      if(match[1]==='405')onStatus('scanned')
       if(match[1]==='402'||match[1]==='403')throw new Error('微信授权已取消或二维码已过期')
     }
-    if(!code)throw new Error('微信扫码超时，请重新登录')
+    if(!code)throw new Error('微信扫码在 90 秒内未完成授权，请重试')
+    onStatus('validating')
     const data=await this.call('music.login.LoginServer','Login',
       {code,strAppid:wxAppId},{},{tmeLoginType:1})
     const musicId=stringOf(data.musicid??data.musicId??data.str_musicid)
@@ -104,9 +112,20 @@ export class QQAccount {
       {uin:credential.musicId},credential)
     if(!Array.isArray(x.v_playlist))throw new Error('QQ音乐没有返回用户歌单')
   }
+  async getEncryptedUin(cred) {
+    const url='https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?'+encodeQuery({
+      ct:20,cv:4747474,cid:205360838,userid:cred.musicId
+    })
+    const response=await platformRequest(this.api,url,{method:'GET',headers:{
+      Referer:'https://y.qq.com/',...(cred.cookie?{Cookie:cred.cookie}:{})
+    }})
+    return String(response.body?.data?.creator?.encrypt_uin??'')
+  }
   async read(cred){
     if(!cred?.musicId||!cred?.musicKey)throw new Error('请登录 QQ音乐账号')
     const lists=[],seen=new Set()
+    let euin=''
+    try{euin=await this.getEncryptedUin(cred)}catch{}
     const data=await this.call('music.musicasset.PlaylistBaseRead','GetPlaylistByUin',
       {uin:cred.musicId},cred)
     const folders=data.v_playlist
@@ -116,16 +135,34 @@ export class QQAccount {
       if(!dissId&&!dirId||seen.has(key))continue
       seen.add(key)
       try{
-        const songs=await this.details(cred,dissId,dirId===201?201:0)
+        const songs=await this.details(cred,dissId,dirId===201?201:0,dirId===201?euin:'')
         lists.push({key,name:dirId===201?'QQ音乐·我喜欢':'QQ音乐·'+(item.dirName??item.name??'歌单'),list:songs})
       }catch{/* One unavailable list must not hide daily recommendations. */}
     }
     // On some accounts the favorites folder is absent from the main index.
     if(!seen.has('love')){
       try{
-        const songs=await this.details(cred,0,201)
+        const songs=await this.details(cred,0,201,euin)
         if(songs.length)lists.push({key:'love',name:'QQ音乐·我喜欢',list:songs})
       }catch{/* Account may have a private or empty favorites folder. */}
+    }
+    if(euin){
+      try{
+        const favorites=await this.call('music.musicasset.PlaylistFavRead','CgiGetPlaylistFavInfo',{
+          uin:euin,offset:0,size:100
+        },cred)
+        if(Array.isArray(favorites.v_list)){
+          for(const favorite of favorites.v_list){
+            const dissId=favorite.id??favorite.tid??0,key='fav:'+dissId
+            if(!dissId||seen.has(key))continue
+            seen.add(key)
+            try{
+              const songs=await this.details(cred,dissId,0)
+              lists.push({key,name:'QQ音乐·'+(favorite.title??favorite.name??'收藏歌单'),list:songs})
+            }catch{}
+          }
+        }
+      }catch{}
     }
     try{
       let songs=[]
@@ -144,12 +181,13 @@ export class QQAccount {
     if(!lists.length)throw new Error('QQ音乐暂无可用的账号歌单或每日推荐')
     return {namespace:'qqmusic:'+cred.musicId,lists}
   }
-  async details(cred,dissId,dirId){
+  async details(cred,dissId,dirId,encryptedUin=''){
     const songs=[]
     for(let page=0;page<100;page++){
       const data=await this.call('music.srfDissInfo.DissInfo','CgiGetDiss',{
         disstid:dissId,dirid:dirId,tag:true,song_begin:page*200,song_num:200,
-        userinfo:true,orderlist:true,onlysonglist:false
+        userinfo:true,orderlist:true,onlysonglist:false,
+        ...(encryptedUin?{enc_host_uin:encryptedUin}:{})
       },cred)
       const rows=data.songlist
       if(!Array.isArray(rows))throw new Error('QQ音乐歌单详情不完整')

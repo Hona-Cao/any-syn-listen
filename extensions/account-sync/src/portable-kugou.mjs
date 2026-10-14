@@ -49,12 +49,24 @@ export class KugouAccount {
         'User-Agent':'Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi',
         'kg-rc':'1','kg-thash':'5d816a0','kg-rec':'1','kg-rf':'B9EDA08A64250DEFFBCADDEE00F8F25F',
         mid,dfid:'-',clienttime:value(payload.clienttime),
-        ...(!login?{'x-router':options.router??'cloudlist.service.kugou.com'}:{})
+        ...(!login && route!=='/v7/login_by_verifycode'?{'x-router':options.router??'cloudlist.service.kugou.com'}:{}),
+        ...(route==='/v7/login_by_verifycode'?{
+          'support-calm':'1',
+          'User-Agent':'Android16-1070-11440-130-0-LOGIN-wifi'
+        }:{})
       },
       ...(body?{text:json}:{})
     })
-    if(Number(resp?.status)!==1 || (resp.error_code!=null && Number(resp.error_code)!==0))
-      throw new Error('酷狗接口暂时不可用')
+    if(Number(resp?.status)!==1 || (resp.error_code!=null && Number(resp.error_code)!==0)){
+      // Never display response objects, signed query strings, phone numbers or tokens.
+      const context=route==='/v7/login_by_verifycode'?'酷狗验证码登录':
+        route==='/v7/send_mobile_code'?'酷狗发送验证码':'酷狗歌单接口'
+      const code=resp?.error_code??resp?.status??'未知'
+      const detail=Number(code)===20017?'验证码错误或已过期':
+        Number(code)===20010?'请求过于频繁':
+        '服务端拒绝请求（状态 '+String(code).slice(0,10)+'）'
+      throw new Error(context+'：'+detail)
+    }
     return Array.isArray(resp.data)?{items:resp.data}:asObject(resp.data)
   }
   async randomHex(bytes){

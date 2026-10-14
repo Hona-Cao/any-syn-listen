@@ -6,6 +6,7 @@ import {cleanMessage} from './portable-utils.mjs'
 const PLATFORM_LABEL={netease:'网易云',qqmusic:'QQ音乐',kugou:'酷狗'}
 const SOURCES=['netease','qqmusic','kugou','lx']
 const STALE_MESSAGE='未登录'
+const DAV_MASK='●●●●●●●●'
 export class NativeController {
   constructor(api){
     this.api=api
@@ -17,6 +18,7 @@ export class NativeController {
     this.lastResult=null
     this.lastUi=''
     this.seq=0
+    this.passwordUpdate=Promise.resolve()
     this.catalogEngine=new CatalogEngine(api,params=>this.transport(params))
     this.engine=api.musicList?new SyncEngine(api,params=>this.transport(params)):this.catalogEngine
   }
@@ -45,7 +47,7 @@ export class NativeController {
       const status=backend.accounts[id]||{}
       const count=all.filter(x=>String(x.meta?.externalMirror??'').startsWith(id+':')).length
       return {id,name:name+' · '+(status.stage==='syncing'?'同步中':
-        status.stage==='error'?'同步失败':count?count+' 个歌单':
+        status.stage==='error'?'同步失败':status.stage==='authorizing'?'等待扫码':status.stage==='scanned'?'已扫码，待确认':status.stage==='validating'?'验证账号中':count?count+' 个歌单':
           status.connected?'已登录':STALE_MESSAGE)}
     })
     const ui={
@@ -79,17 +81,99 @@ export class NativeController {
     if(state?.stage==='error')throw new Error(state.error??'歌单读取失败')
   }
   async login(source){
-    const success=await this.portable.login(source)
-    if(!success)return
+    let success=false
+    try{
+      success=await this.portable.login(source,stage=>{
+        this.portable.status[source]={connected:false,stage}
+        void this.refreshNative().catch(()=>{})
+      })
+    }catch(error){
+      this.portable.status[source]={connected:false,stage:'error',error:cleanMessage(error)}
+      await this.refreshNative()
+      throw error
+    }
+    if(!success){
+      this.portable.status[source]={connected:false,stage:'idle'}
+      await this.refreshNative()
+      return
+    }
     await this.api.app.showMessage('登录成功')
     try{await this.importSource(source)}
     catch(e){await this.api.app.showMessage('账号已登录，歌单暂时未同步：'+cleanMessage(e),{type:'warning'})}
   }
+  async webLogin(source){
+    const urls={
+      netease:'https://music.163.com/#/login',
+      qqmusic:'https://y.qq.com/n/ryqq/profile',
+      kugou:'https://www.kugou.com/'
+    }
+    const buttons=[
+      {text:'取消'},
+      {text:'打开官网',link:urls[source]},
+      {text:'导入登录状态'}
+    ]
+    const choice=await this.api.app.showMessage('请先在平台官方网站登录。官方 AnyListen 扩展暂不能自动读取浏览器 Cookie。',{modal:true,buttons})
+    if(choice===2)await this.importCookie(source)
+  }
+  async importAccountState(){
+    const select=await this.api.app.showMessage('选择平台，然后粘贴在该平台登录后得到的 Cookie。',{
+      modal:true,buttons:[{text:'取消'},{text:'网易云'},{text:'QQ音乐'},{text:'酷狗'}]
+    })
+    if(select<=0||select>3)return
+    const platforms=['netease','qqmusic','kugou']
+    await this.importCookie(platforms[select-1])
+  }
+  async importCookie(source){
+    const label=PLATFORM_LABEL[source]
+    const state=await this.api.app.showInputDialog({
+      title:label+' · 导入登录状态',placeholder:'粘贴该平台登录后的 Cookie',
+      password:true
+    })
+    if(!state)return
+    await this.portable.importCookie(source,state)
+    try{
+      await this.importSource(source)
+      await this.api.app.showMessage('登录成功，歌单已同步')
+    }catch(e){
+      await this.api.app.showMessage('登录状态已导入，但歌单暂时无法读取：'+cleanMessage(e),{type:'warning'})
+    }
+  }
+  async neteaseLogin(){
+    // SMS-only WEAPI is frequently blocked by security verification.
+    // Prefer official web login + explicit user-provided Cookie; no attempt
+    // to scrape another application's HttpOnly browser cookies.
+    return this.webLogin('netease')
+  }
+  async captureWebdavPassword(){
+    const [value]=await this.configs(['webdavPassword'])
+    if(typeof value==='string' && value && value!==DAV_MASK){
+      this.portable.pendingDAVPassword=value
+      await this.api.configuration.setConfigs({webdavPassword:DAV_MASK})
+    }
+  }
   async configureWebdav(){
-    if(!await this.portable.configureDAV())return
-    await this.api.app.showMessage('设置成功')
+    await this.passwordUpdate
+    await this.captureWebdavPassword()
+    const [url,username,folder]=await this.configs(['webdavUrl','webdavUsername','webdavFolder'])
+    const password=this.portable.pendingDAVPassword??this.portable.webdav?.password
+    if(!url||!username||!password)throw new Error('请填写 WebDAV 地址、用户名和应用密码')
+    await this.portable.configureDAV({url,username,password,folder:folder||'/LX_Music'})
+    this.portable.pendingDAVPassword=null
+    await this.api.configuration.setConfigs({webdavPassword:DAV_MASK})
+    await this.api.app.showMessage('WebDAV 已连接')
     try{await this.importSource('lx')}
-    catch(e){await this.api.app.showMessage('设置已保存，歌单暂时未同步：'+cleanMessage(e),{type:'warning'})}
+    catch(e){await this.api.app.showMessage('设置已保存，但歌单暂时未同步：'+cleanMessage(e),{type:'warning'})}
+  }
+  async clearWebdav(){
+    const choice=await this.api.app.showMessage('断开 WebDAV 连接？不会删除已导入的歌单。',{
+      modal:true,buttons:[{text:'取消'},{text:'断开'}]
+    })
+    if(choice!==1)return
+    await this.portable.clearDAV()
+    this.portable.pendingDAVPassword=null
+    await this.api.configuration.setConfigs({webdavUrl:'',webdavUsername:'',webdavFolder:'/LX_Music',webdavPassword:''})
+    await this.refreshNative()
+    await this.api.app.showMessage('已断开 WebDAV')
   }
   async sync(){
     const connected=this.enabled.filter(id=>this.portable.isConnected(id))
@@ -128,10 +212,14 @@ export class NativeController {
     if(this.engine!==this.catalogEngine)await this.catalogEngine.load()
     registerCatalogResources(this.api,this)
     const commands={
-      loginNetease:()=>this.login('netease'),
+      loginNetease:()=>this.neteaseLogin(),
       loginQQ:()=>this.login('qqmusic'),
       loginKugou:()=>this.login('kugou'),
-      configureWebdav:()=>this.configureWebdav(),
+      importNetease:()=>this.importCookie('netease'),
+      importQQ:()=>this.importCookie('qqmusic'),
+      openQQWeb:()=>this.webLogin('qqmusic'),importAccountState:()=>this.importAccountState(),
+      importKugou:()=>this.importCookie('kugou'),
+      configureWebdav:()=>this.configureWebdav(),clearWebdav:()=>this.clearWebdav(),
       sync:()=>this.sync(),refreshLists:()=>this.tick()
     }
     for(const [name,action] of Object.entries(commands)){
@@ -148,7 +236,24 @@ export class NativeController {
       void this.refreshNative().catch(()=>{})
     })
     this.api.configuration.onConfigChanged(keys=>{
+      if(keys.includes('webdavPassword')){
+        this.passwordUpdate=this.passwordUpdate.then(()=>this.captureWebdavPassword()).catch(()=>{})
+      }
       if(keys.some(k=>['enabledAccounts','enabledLX'].includes(k)))void this.refreshNative().catch(()=>{})
+    })
+    const configValues={
+      webdavUrl:this.portable.webdav?.url??'',
+      webdavUsername:this.portable.webdav?.username??'',
+      webdavFolder:this.portable.webdav?.folder??'/LX_Music'
+    }
+    const [unsavedPassword]=await this.configs(['webdavPassword'])
+    if(unsavedPassword && unsavedPassword!==DAV_MASK){
+      // Previous crash during editing might leave a secret in settings.
+      this.portable.pendingDAVPassword=unsavedPassword
+    }
+    await this.api.configuration.setConfigs({
+      ...configValues,
+      webdavPassword:this.portable.webdav?.password||this.portable.pendingDAVPassword?DAV_MASK:''
     })
     await this.refreshNative()
     // Loading the extension never opens a login window, sends SMS or requires a local service.

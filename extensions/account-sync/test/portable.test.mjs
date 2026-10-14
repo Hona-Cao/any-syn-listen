@@ -3,6 +3,7 @@ import {test} from 'node:test'
 import {createHash} from 'node:crypto'
 import fs from 'node:fs/promises'
 import {NativeController} from '../src/native-controller.mjs'
+import {PortableClient} from '../src/portable-client.mjs'
 import {NetEaseAccount} from '../src/portable-netease.mjs'
 import {QQAccount} from '../src/portable-qq.mjs'
 import {KugouAccount} from '../src/portable-kugou.mjs'
@@ -71,7 +72,7 @@ test('fresh standalone extension starts with no helper on any machine',async()=>
   const ctl=new NativeController(h.api)
   await ctl.start()
   clearInterval(ctl.timer)
-  assert.equal(h.commands.size,6)
+  assert.equal(h.commands.size,12)
   assert.equal(h.files.has('connection.json'),false)
   assert.equal(h.config.get('accountItems').length,3)
   assert.equal(h.config.get('webdavItems')[0].name,'未设置')
@@ -138,7 +139,7 @@ test('Kugou native SMS uses encrypted request and returns login token without da
   const paths=[]
   const h=makeApi((url,opts)=>{
     const u=new URL(url)
-    paths.push({host:u.hostname,path:u.pathname,body:opts.text})
+    paths.push({host:u.hostname,path:u.pathname,body:opts.text,headers:opts.headers})
     if(u.pathname==='/v7/send_mobile_code')return reply({status:1,data:{status:1}})
     if(u.pathname==='/v7/login_by_verifycode')return reply({status:1,data:{userid:'12345',token:'kugou-test-token'}})
     throw Error('Unexpected Kugou URL')
@@ -153,6 +154,9 @@ test('Kugou native SMS uses encrypted request and returns login token without da
   assert.ok(!paths[1].body.includes('123456'))
   assert.ok(JSON.parse(paths[1].body).params.length>32)
   assert.ok(JSON.parse(paths[1].body).pk.length>64)
+  assert.equal(paths[1].headers['support-calm'],'1')
+  assert.equal(paths[1].headers['x-router'],undefined)
+  assert.ok(paths[1].headers['User-Agent'].includes('LOGIN'))
 })
 
 test('LX N WebDAV uses extension-native HTTPS request and keeps source playlists',async()=>{
@@ -209,4 +213,76 @@ test('AnyListen isolate has no global URL or URLSearchParams',async()=>{
     globalThis.URL=prevURL
     globalThis.URLSearchParams=prevSearch
   }
+})
+
+test('WebDAV settings restore in place without exposing saved value on settings page',async()=>{
+  const h=makeApi(()=>reply(''))
+  h.files.set('portable-webdav.json',JSON.stringify({
+    url:'https://dav.example.org/dav',username:'demo',password:'fixture',folder:'/LX_Music'
+  }))
+  const c=new NativeController(h.api)
+  await c.start();clearInterval(c.timer)
+  assert.equal(h.config.get('webdavUrl'),'https://dav.example.org/dav')
+  assert.equal(h.config.get('webdavUsername'),'demo')
+  assert.equal(h.config.get('webdavPassword'),'●●●●●●●●')
+})
+
+test('NetEase and QQ can import owned browser sessions through native prompt',async()=>{
+  const h=makeApi((url,opts)=>{
+    if(String(url).includes('nuser/account/get'))return reply({code:200,account:{id:12}})
+    if(String(url).includes('musicu.fcg')){
+      const key='music.musicasset.PlaylistBaseRead'
+      return reply({code:0,[key]:{code:0,data:{v_playlist:[]}}})
+    }
+    throw Error('Unexpected request')
+  })
+  const client=new PortableClient(h.api)
+  await client.importCookie('netease','MUSIC_U=fixture')
+  await client.importCookie('qqmusic','musicid=12345678; qqmusic_key=fixture')
+  assert.ok(client.isConnected('netease'))
+  assert.ok(client.isConnected('qqmusic'))
+  await assert.rejects(client.importCookie('netease','invalid=1'),/MUSIC_U/)
+  assert.ok(client.isConnected('netease'))
+})
+
+test('Kugou login failure reports a safe server code instead of generic refusal',async()=>{
+  const h=makeApi(()=>reply({status:0,error_code:20271}))
+  const kg=new KugouAccount(h.api)
+  await assert.rejects(
+    kg.request('/v7/login_by_verifycode','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',{},
+      {plat:1},{baseUrl:'https://loginserviceretry.kugou.com'}),
+    /酷狗验证码登录.*20271/
+  )
+})
+
+test('QQ imported account lists fetch private favorites with encrypted profile ID',async()=>{
+  const track={id:100,mid:'003sourceid',name:'收藏音乐',singer:[{name:'歌手'}],
+    album:{mid:'a01',name:'专辑'},interval:185}
+  let privateRequested=false
+  const h=makeApi((url,opts)=>{
+    if(String(url).includes('fcg_get_profile_homepage'))
+      return reply({data:{creator:{encrypt_uin:'encoded-user'}}})
+    if(String(url).includes('musicu.fcg')){
+      const packet=opts.json
+      const name=Object.keys(packet).find(x=>x!=='comm')
+      const req=packet[name]
+      let data={}
+      if(req.method==='GetPlaylistByUin')
+        data={v_playlist:[{dirId:201,tid:987,dirName:'我喜欢'}]}
+      else if(req.method==='CgiGetDiss'){
+        if(req.param.dirid===201){
+          privateRequested=true
+          assert.equal(req.param.enc_host_uin,'encoded-user')
+        }
+        data={songlist:[track],total_song_num:1}
+      }else if(req.method==='CgiGetPlaylistFavInfo')data={v_list:[]}
+      else if(req.method==='GetRadarSong')data={VecSongs:[{Track:track}]}
+      return reply({code:0,[name]:{code:0,data}})
+    }
+    throw Error('Unexpected QQ source')
+  })
+  const playlists=await new QQAccount(h.api).read({musicId:'12345678',musicKey:'fixture'})
+  assert.equal(privateRequested,true)
+  assert.ok(playlists.lists.some(x=>x.name==='QQ音乐·我喜欢'))
+  assert.ok(playlists.lists.some(x=>x.name==='QQ音乐·每日推荐'))
 })
