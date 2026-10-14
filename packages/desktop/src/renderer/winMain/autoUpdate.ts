@@ -71,15 +71,15 @@ export const updateIgnoreVersion = (version: string | null) => {
 }
 
 export const checkUpdate = async () => {
-  return update.checkForUpdates(appState.appSetting['common.tryAutoUpdate'])
+  // Fork experiments must never download or install the upstream release.
+  return false
 }
 
 export const downloadUpdate = async () => {
-  if (!(await update.isUpdateAvailable())) return
-  void update.downloadUpdate()
+  // Disabled until the fork publishes a separately signed update channel.
 }
 
 export const restartUpdate = async () => {
   // appActions.setSkipTrayQuit(true)
-  await update.quitAndInstall()
+  // Disabled until the fork publishes a separately signed update channel.
 }
