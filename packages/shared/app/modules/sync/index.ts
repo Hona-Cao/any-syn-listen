@@ -4,3 +4,5 @@ export { syncWebDAVEvent } from './webdav/event'
 
 export { configureNeteaseSessionProvider, type NeteaseSessionProvider } from './webdav/task'
 export { getNeteaseAccountId } from './external/neteaseSession'
+
+export { configureOtherMusicSessionProvider, type OtherMusicSessionProvider } from './webdav/task'
