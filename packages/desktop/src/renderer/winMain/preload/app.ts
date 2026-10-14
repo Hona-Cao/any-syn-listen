@@ -51,6 +51,12 @@ export const createClientApp = (main: MainCall) => {
     async loginNeteaseInWindow() {
       return main.loginNeteaseInWindow()
     },
+    async loginQQMusicInWindow() {
+      return main.loginQQMusicInWindow()
+    },
+    async loginKugouInWindow() {
+      return main.loginKugouInWindow()
+    },
     async getAppInfo() {
       return main.getAppInfo()
     },
