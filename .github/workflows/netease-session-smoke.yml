@@ -1,9 +1,6 @@
 name: NetEase session unit tests
 
 on:
-  push:
-    branches:
-      - feat/lx-webdav-cloud-playlists
   pull_request:
     paths:
       - 'packages/shared/app/modules/sync/external/neteaseSession.ts'
