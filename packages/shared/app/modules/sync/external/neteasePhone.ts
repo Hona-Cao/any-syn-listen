@@ -1,3 +1,4 @@
+// @ts-ignore Node's native TypeScript test runner requires the extension; Vite supports it.
 import { getNeteaseAccountId, mergeSetCookies, requestNetease } from './neteaseSession.ts'
 
 const states = new Map<string, { sentAt: number; cookie: string }>()
