@@ -23,7 +23,7 @@ function harness(){
 }
 test('native manifest declares settings with the official CheckboxMultiple and command schema',async()=>{
  const manifest=JSON.parse(await fs.readFile('dist/manifest.json','utf8'))
- assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.2.1')
+ assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.0')
  const settings=manifest.contributes.settings
  assert.ok(settings.some(x=>x.type==='configCheckboxMultiple'&&x.actionCommands.includes('loginNetease')))
  assert.equal(settings.some(x=>x.field==='selectedPlaylists'),false)
@@ -60,8 +60,8 @@ test('native filter/all-select only selects current eligible lists',async()=>{
  await h.api.configuration.setConfigs({selectedPlaylists:[]});assert.deepEqual(h.configs.get('selectedPlaylists'),[])
 })
 test('closing native input dialogs never sends an SMS or changes credentials',async()=>{
- const h=harness();const c=new NativeController(h.api);c.connection={token:'a'.repeat(64),clientId:'test'}
- await c.loginKugou();assert.equal(h.network.length,0);assert.equal(h.files.size,0)
+ const h=harness();const c=new NativeController(h.api)
+ await c.login('kugou');assert.equal(h.network.length,0);assert.equal(h.files.size,0)
 })
 test('native extension never asks the bridge to open a management UI',async()=>{
  const code=await fs.readFile('src/native-controller.mjs','utf8')

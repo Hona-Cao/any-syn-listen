@@ -1,9 +1,9 @@
 import type { ExtensionConfig } from '@any-listen/extension-kit/config'
 const config: ExtensionConfig = {
-  id: 'hona-account-sync', name: '账号歌单同步', version: '0.2.1', target_engine: '1.4.0',
+  id: 'hona-account-sync', name: '账号歌单同步', version: '0.3.0', target_engine: '1.4.0',
   description: '网易云、QQ音乐、酷狗与 LX N 歌单同步', author: 'Hona-Cao',
   homepage: 'https://github.com/Hona-Cao/any-syn-listen', license: 'SEE LICENSE IN LICENSE',
-  categories: ['music'], tags: ['sync'], grant: ['internet','music_list'],
+  categories: ['music'], tags: ['sync'], grant: ['internet'],
   download_url_template: 'https://github.com/Hona-Cao/any-syn-listen/releases/download/account-sync-v{version}',
   contributes: {
     settings: [
