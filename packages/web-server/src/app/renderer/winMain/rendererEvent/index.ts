@@ -42,6 +42,11 @@ export type ExposeClientFunctions = Omit<
   | 'showDesktopLyric'
   | 'hideDesktopLyric'
   | 'setBackupPath'
+  | 'loginNeteaseInWindow'
+  | 'loginQQMusicInWindow'
+  | 'loginKugouInWindow'
+  | 'requestMusicSMSCode'
+  | 'loginMusicWithSMSCode'
 >
 
 let isInitialized = false

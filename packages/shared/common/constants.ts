@@ -1,4 +1,4 @@
-export const URL_SCHEME_RXP = /^anylisten:\/\//
+export const URL_SCHEME_RXP = /^anysynlisten:\/\//
 
 export const NATIVE_VERSION = 11
 

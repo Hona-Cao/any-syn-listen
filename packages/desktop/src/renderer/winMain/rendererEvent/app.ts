@@ -6,6 +6,10 @@ import { proxyServerState } from '@any-listen/app/modules/proxyServer/state'
 import { appState, updateSetting } from '@/app'
 import { quit } from '@/app/actions'
 import { executeCommand } from '@/modules/command'
+import { openNeteaseLoginWindow } from '@/modules/neteaseLogin'
+import { openQQMusicLoginWindow } from '@/modules/qqMusicLogin'
+import { openKugouLoginWindow } from '@/modules/kugouLogin'
+import { requestMusicSMSCode, loginMusicWithSMSCode } from '@/modules/musicPhoneAuth'
 import { clipboardReadText, clipboardWriteText, exitApp, openDirInExplorer, openUrl } from '@/shared/electron'
 import { getFonts } from '@/shared/fontManage'
 import { workers } from '@/worker'
@@ -27,6 +31,21 @@ import {
 // 暴露给前端的方法
 export const createExposeApp = () => {
   return {
+    async loginNeteaseInWindow() {
+      return openNeteaseLoginWindow()
+    },
+    async loginQQMusicInWindow() {
+      return openQQMusicLoginWindow()
+    },
+    async loginKugouInWindow() {
+      return openKugouLoginWindow()
+    },
+    async requestMusicSMSCode(_event, platform, phone) {
+      return requestMusicSMSCode(platform, phone)
+    },
+    async loginMusicWithSMSCode(_event, platform, phone, code) {
+      return loginMusicWithSMSCode(platform, phone, code)
+    },
     async getAppInfo(event) {
       return {
         machineId: appState.machineId,

@@ -1,0 +1,48 @@
+name: Windows portable experimental build (no Codex)
+
+on:
+  push:
+    branches:
+      - feat/lx-webdav-cloud-playlists
+    paths:
+      - '.github/workflows/windows-portable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-windows:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install runtime and native dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify test build cannot overwrite official AnyListen data
+        shell: pwsh
+        run: |
+          git rev-parse --short HEAD
+          $config = Get-Content "packages/desktop/build-config/build-pack.cjs" -Raw
+          $app = Get-Content "packages/desktop/src/app/index.ts" -Raw
+          if (!$config.Contains("productName: 'any-syn-listen'")) { throw 'Fork app identity missing' }
+          if (!$app.Contains("AnySynListenDatas")) { throw 'Isolated user directory missing' }
+      - name: Compile complete desktop application
+        run: pnpm -F @shared/scripts build:desktop
+      - name: Package unsigned portable Windows x64
+        run: pnpm -F desktop pack:win:portable:x64
+      - name: Upload unsigned build for user tests (7 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: any-syn-listen-windows-x64-experimental
+          path: build/*.exe
+          if-no-files-found: error
+          retention-days: 7

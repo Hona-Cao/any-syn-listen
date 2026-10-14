@@ -48,6 +48,21 @@ export const createExposeApp = (client: ClientCall) => {
 // 暴露给前端的方法
 export const createClientApp = (main: MainCall) => {
   return {
+    async loginNeteaseInWindow() {
+      return main.loginNeteaseInWindow()
+    },
+    async loginQQMusicInWindow() {
+      return main.loginQQMusicInWindow()
+    },
+    async loginKugouInWindow() {
+      return main.loginKugouInWindow()
+    },
+    async requestMusicSMSCode(platform, phone) {
+      return main.requestMusicSMSCode(platform, phone)
+    },
+    async loginMusicWithSMSCode(platform, phone, code) {
+      return main.loginMusicWithSMSCode(platform, phone, code)
+    },
     async getAppInfo() {
       return main.getAppInfo()
     },

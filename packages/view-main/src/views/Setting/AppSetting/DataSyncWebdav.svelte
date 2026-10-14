@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '@/plugins/i18n'
+  import { loginQQMusicInWindow, requestMusicSMSCode, loginMusicWithSMSCode } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
@@ -44,6 +45,20 @@
   let password = $state(settingState.setting['sync.webdav.password'])
   let enableList = $state(settingState.setting['sync.webdav.syncEnable.list'])
   let enableDislike = $state(settingState.setting['sync.webdav.syncEnable.dislike'])
+  let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
+  let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
+  let neteaseLoginMessage = $state('')
+  let smsPlatform = $state<'netease' | 'kugou' | null>(null)
+  let smsPhone = $state('')
+  let smsCode = $state('')
+  let smsBusy = $state(false)
+  let smsStatus = $state('')
+  let qqEnable = $state(settingState.setting['sync.qq.enable'])
+  let qqMessage = $state('')
+  let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
+  let kugouMessage = $state('')
+  let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
+  let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
   const runSync = async () => {
     await runSyncWebDAV(
@@ -162,6 +177,140 @@
         }}
       />
     </div>
+    <div class="gap-top">
+      <Checkbox
+        label="LX N 歌单同步"
+        id="sync.lxWebdav.enable"
+        checked={lxEnable}
+        onchange={(val) => {
+          lxEnable = val
+          void updateSetting({ 'sync.lxWebdav.enable': val })
+        }}
+      />
+    </div>
+    {#if lxEnable}
+      <div class="gap-top">
+        <Input
+          id="sync.lxWebdav.path"
+          class="input-url"
+          placeholder="LX N 目录 /LX_Music/"
+          value={lxPath}
+          onchange={(val) => { lxPath = val }}
+          onblur={() => { void updateSetting({ 'sync.lxWebdav.path': lxPath }) }}
+        />
+      </div>
+    {/if}
+    {#if import.meta.env.VITE_IS_DESKTOP}
+      <div class="gap-top">
+        <Btn onclick={() => {
+          smsPlatform = smsPlatform === 'netease' ? null : 'netease'
+          smsStatus = ''
+          smsPhone = ''
+          smsCode = ''
+        }}>网易云账号登录</Btn>
+        <Btn onclick={async () => {
+          qqMessage = ''
+          try {
+            if (await loginQQMusicInWindow()) {
+              qqEnable = true
+              qqMessage = '登录成功'
+            }
+          } catch (error) {
+            qqMessage = (error as Error).message
+          }
+        }}>QQ 音乐账号登录</Btn>
+        <Btn onclick={() => {
+          smsPlatform = smsPlatform === 'kugou' ? null : 'kugou'
+          smsStatus = ''
+          smsPhone = ''
+          smsCode = ''
+        }}>酷狗账号登录</Btn>
+      </div>
+      {#if qqMessage}<p class="small">{qqMessage}</p>{/if}
+      {#if neteaseLoginMessage}<p class="small">{neteaseLoginMessage}</p>{/if}
+      {#if kugouMessage}<p class="small">{kugouMessage}</p>{/if}
+      {#if smsPlatform}
+        <div class="gap-top">
+          <Input
+            type="tel"
+            placeholder="手机号"
+            bind:value={smsPhone}
+            onchange={(value) => { smsPhone = value }}
+          />
+          <Btn
+            disabled={smsBusy || !/^1\d{10}$/.test(smsPhone)}
+            onclick={async () => {
+              if (!smsPlatform) return
+              smsBusy = true
+              smsStatus = ''
+              try {
+                await requestMusicSMSCode(smsPlatform, smsPhone)
+                smsStatus = '验证码已发送'
+              } catch (err) {
+                smsStatus = (err as Error).message
+              } finally {
+                smsBusy = false
+              }
+            }}
+          >获取验证码</Btn>
+        </div>
+        <div class="gap-top">
+          <Input
+            placeholder="验证码"
+            bind:value={smsCode}
+            onchange={(value) => { smsCode = value }}
+          />
+          <Btn
+            disabled={smsBusy || !/^\d{4,8}$/.test(smsCode)}
+            onclick={async () => {
+              if (!smsPlatform) return
+              smsBusy = true
+              smsStatus = ''
+              try {
+                const platform = smsPlatform
+                const success = await loginMusicWithSMSCode(platform, smsPhone, smsCode)
+                if (success) {
+                  if (platform === 'netease') neteaseEnable = true
+                  if (platform === 'kugou') kugouEnable = true
+                  smsCode = ''
+                  smsPlatform = null
+                  neteaseLoginMessage = platform === 'netease' ? '登录成功' : ''
+                  kugouMessage = platform === 'kugou' ? '登录成功' : ''
+                }
+              } catch (err) {
+                smsStatus = (err as Error).message
+              } finally {
+                smsBusy = false
+              }
+            }}
+          >登录</Btn>
+        </div>
+        {#if smsStatus}<p class="small">{smsStatus}</p>{/if}
+      {/if}
+    {:else}
+      <div class="gap-top">
+        <Checkbox
+          label="网易云歌单同步"
+          id="sync.netease.enable"
+          checked={neteaseEnable}
+          onchange={(val) => {
+            neteaseEnable = val
+            void updateSetting({ 'sync.netease.enable': val })
+          }}
+        />
+      </div>
+      {#if neteaseEnable}
+        <Input
+          id="sync.netease.cookie"
+          class="input-url"
+          type="password"
+          placeholder="网易云 Cookie"
+          value={neteaseCookie}
+          onchange={(val) => { neteaseCookie = val }}
+          onblur={() => { void updateSetting({ 'sync.netease.cookie': neteaseCookie }) }}
+        />
+      {/if}
+    {/if}
     <div class="gap-top">
       <Btn disabled={disabledSyncBtn} onclick={runSync}>{$t('settings.dataSync.webdav_sync')}</Btn>
     </div>

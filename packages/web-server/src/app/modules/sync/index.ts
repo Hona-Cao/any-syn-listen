@@ -1,5 +1,6 @@
 import {
   getSyncWebDAVState,
+  configureNeteaseSessionProvider,
   runSyncWebDAV as runSyncWebDAVOriginal,
   cancelWebDAVSyncTask,
   runWebDAVSyncTask,
@@ -7,18 +8,22 @@ import {
   syncWebDAVEvent,
 } from '@any-listen/app/modules/sync'
 
-import { appEvent, appState } from '@/app/app'
+import { appEvent, appState, updateSetting } from '@/app/app'
 
 const init = (immediately?: boolean) => {
-  if (appState.appSetting['sync.webdav.enable']) {
+  if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable']) {
     runWebDAVSyncTask(immediately)
   } else {
     cancelWebDAVSyncTask()
   }
 }
 export const initSync = async () => {
+  configureNeteaseSessionProvider({
+    getCookie: async () => appState.appSetting['sync.netease.cookie'],
+    saveCookie: async (cookie) => { updateSetting({ 'sync.netease.cookie': cookie }) },
+  })
   appEvent.on('updated_config', (keys, settings) => {
-    if (keys.includes('sync.webdav.enable')) {
+    if (keys.some((key) => key === 'sync.webdav.enable' || key === 'sync.lxWebdav.enable' || key === 'sync.netease.enable')) {
       init()
     }
   })

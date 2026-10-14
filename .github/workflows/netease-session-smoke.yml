@@ -1,0 +1,19 @@
+name: Cloud music protocol unit tests (no Codex)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/shared/app/modules/sync/external/**'
+      - 'tests/*.test.mjs'
+      - '.github/workflows/netease-session-smoke.yml'
+
+jobs:
+  test-cloud-protocols:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test LX Music, NetEase, QQ Music and Kugou mocks
+        run: node --experimental-strip-types --test tests/*.test.mjs

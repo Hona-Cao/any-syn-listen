@@ -611,6 +611,14 @@ declare global {
        */
       'sync.webdav.syncEnable.dislike': boolean
 
+      /** Import LX N WebDAV lists as separate user playlists (read-only). */
+      'sync.lxWebdav.enable': boolean
+      'sync.lxWebdav.path': string
+      'sync.netease.enable': boolean
+      'sync.netease.cookie': string
+      'sync.qq.enable': boolean
+      'sync.kugou.enable': boolean
+
       /** 备份路径 */
       'backup.backupPath': string
 

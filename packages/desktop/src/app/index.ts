@@ -8,14 +8,14 @@ import { DEFAULT_LANG, URL_SCHEME_RXP } from '@any-listen/common/constants'
 import { isUrl } from '@any-listen/common/utils'
 import { parseEnvParams } from '@any-listen/nodejs/env'
 import { checkAndCreateDir } from '@any-listen/nodejs/index'
-import { app, nativeTheme, screen, shell, webContents } from 'electron'
+import { app, nativeTheme, screen, session, shell, webContents } from 'electron'
 
 import { i18n } from '@/i18n'
 import { rendererIPC } from '@/renderer/winMain/rendererEvent'
 import { buildElectronProxyConfig, trashItem } from '@/shared/electron'
 import { log, logger } from '@/shared/log'
 import { setProxyByHost } from '@/shared/request'
-import { startCheckUpdateTimeout, update } from '@/shared/update'
+import { update } from '@/shared/update'
 
 import { version } from '../../package.json'
 import { setSkipTrayQuit } from './actions'
@@ -102,7 +102,7 @@ export const setUserDataPath = async () => {
   }
 
   const userDataPath = app.getPath('userData')
-  appState.dataPath = path.join(userDataPath, 'AnyListenDatas')
+  appState.dataPath = path.join(userDataPath, 'AnySynListenDatas')
 
   appState.cacheDataPath = `${appState.dataPath}/cache`
   appState.tempDataPath = `${appState.dataPath}/temp`
@@ -116,7 +116,7 @@ export const registerDeeplink = () => {
     // Set the path of electron.exe and your app.
     // These two additional parameters are only available on windows.
     // console.log(process.execPath, process.argv)
-    app.setAsDefaultProtocolClient('anylisten', process.execPath, process.argv.slice(1))
+    app.setAsDefaultProtocolClient('anysynlisten', process.execPath, process.argv.slice(1))
   } else {
     app.setAsDefaultProtocolClient('anylisten')
   }
@@ -137,6 +137,21 @@ export const listenerElectronEvent = () => {
   })
   app.on('web-contents-created', (event, contents) => {
     contents.on('will-navigate', (event, navigationUrl) => {
+      // The external login lives in a sandboxed, dedicated Electron session.
+      const isNetease = contents.session === session.fromPartition('persist:netease-auth')
+      const isQQ = contents.session === session.fromPartition('persist:qqmusic-auth')
+      if (isNetease || isQQ) {
+        try {
+          const target = new URL(navigationUrl)
+          if (target.protocol === 'https:') {
+            if (isNetease && ['music.163.com', 'passport.163.com', 'reg.163.com'].includes(target.hostname)) return
+            if (isQQ && (target.hostname === 'qq.com' || target.hostname.endsWith('.qq.com') ||
+                         target.hostname === 'weixin.qq.com' || target.hostname.endsWith('.weixin.qq.com'))) return
+          }
+        } catch {}
+        event.preventDefault()
+        return
+      }
       if (import.meta.env.DEV) {
         console.log('navigation to url:', navigationUrl.length > 130 ? `${navigationUrl.substring(0, 130)}...` : navigationUrl)
         return
@@ -148,6 +163,31 @@ export const listenerElectronEvent = () => {
       console.log('navigation to url:', navigationUrl)
     })
     contents.setWindowOpenHandler(({ url }) => {
+      // QQ's official OAuth pages can open a secondary QQ/WeChat login window.
+      if (contents.session === session.fromPartition('persist:qqmusic-auth')) {
+        try {
+          const target = new URL(url)
+          if (target.protocol === 'https:' && (
+            target.hostname === 'qq.com' || target.hostname.endsWith('.qq.com') ||
+            target.hostname === 'weixin.qq.com' || target.hostname.endsWith('.weixin.qq.com')
+          )) {
+            return {
+              action: 'allow',
+              overrideBrowserWindowOptions: {
+                width: 620, height: 710,
+                webPreferences: {
+                  partition: 'persist:qqmusic-auth',
+                  nodeIntegration: false,
+                  contextIsolation: true,
+                  sandbox: true,
+                  webSecurity: true,
+                },
+              },
+            }
+          }
+        } catch {}
+        return { action: 'deny' }
+      }
       if (!url.startsWith('devtools') && isUrl(url)) {
         void shell.openExternal(url)
       }
@@ -242,7 +282,7 @@ const listenerAppEvent = () => {
       void app.setProxy(buildElectronProxyConfig(appState.proxy.host, appState.proxy.port))
     } catch {}
     handleProxyChange()
-    if (process.env.NODE_ENV === 'production') void startCheckUpdateTimeout()
+    // Fork test builds intentionally do not auto-install upstream AnyListen updates.
   })
   appEvent.on('proxy_changed', (host, port, electronProxy) => {
     setProxyByHost(host, port)

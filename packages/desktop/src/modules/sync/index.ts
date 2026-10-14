@@ -1,5 +1,9 @@
+import { Notification } from 'electron'
+
 import {
   getSyncWebDAVState,
+  configureNeteaseSessionProvider,
+  configureOtherMusicSessionProvider,
   runSyncWebDAV as runSyncWebDAVOriginal,
   cancelWebDAVSyncTask,
   runWebDAVSyncTask,
@@ -7,18 +11,43 @@ import {
   syncWebDAVEvent,
 } from '@any-listen/app/modules/sync'
 
-import { appEvent, appState } from '@/app'
+import { appEvent, appState, updateSetting } from '@/app'
+import { readSecureNeteaseCookie, writeSecureNeteaseCookie } from '@/modules/neteaseLogin'
+import { readAccountSecret } from '@/modules/accountVault'
 
 const init = (immediately?: boolean) => {
-  if (appState.appSetting['sync.webdav.enable']) {
+  if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable'] || appState.appSetting['sync.qq.enable'] || appState.appSetting['sync.kugou.enable']) {
     runWebDAVSyncTask(immediately)
   } else {
     cancelWebDAVSyncTask()
   }
 }
 export const initSync = async () => {
+  configureOtherMusicSessionProvider({
+    getQQ: async () => {
+      const raw = await readAccountSecret('qqmusic')
+      return raw ? JSON.parse(raw) as import('@any-listen/app/modules/sync/external/qqMusic').QQMusicCredential : null
+    },
+    getKugou: async () => {
+      const raw = await readAccountSecret('kugou')
+      return raw ? JSON.parse(raw) as import('@any-listen/app/modules/sync/external/kugouMusic').KugouAccount : null
+    },
+  })
+  configureNeteaseSessionProvider({
+    getCookie: async () => appState.appSetting['sync.netease.cookie'] || await readSecureNeteaseCookie(),
+    saveCookie: async (cookie) => {
+      await writeSecureNeteaseCookie(cookie)
+      if (appState.appSetting['sync.netease.cookie']) updateSetting({ 'sync.netease.cookie': '' })
+    },
+    notifyReauth: () => {
+      if (Notification.isSupported()) new Notification({
+        title: 'AnyListen · 网易云登录已失效',
+        body: '请进入设置，重新通过官方登录窗口授权。歌单数据不会被删除。',
+      }).show()
+    },
+  })
   appEvent.on('updated_config', (keys, settings) => {
-    if (keys.includes('sync.webdav.enable')) {
+    if (keys.some((key) => key === 'sync.webdav.enable' || key === 'sync.lxWebdav.enable' || key === 'sync.netease.enable' || key === 'sync.qq.enable' || key === 'sync.kugou.enable')) {
       init()
     }
   })

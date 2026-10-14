@@ -28,6 +28,11 @@ export type ExposeServerFunctions = Omit<
   | 'getSystemFonts'
   | 'minWindow'
   | 'fullscreenWindow'
+  | 'loginNeteaseInWindow'
+  | 'loginQQMusicInWindow'
+  | 'loginKugouInWindow'
+  | 'requestMusicSMSCode'
+  | 'loginMusicWithSMSCode'
 >
 export type ClientCall = AnyListen.IPC.ClientIPC
 
