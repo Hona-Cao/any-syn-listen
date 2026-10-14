@@ -1,4 +1,4 @@
-import { applyExternalMirrors, type MirrorPlaylist } from './mirror'
+import type { MirrorPlaylist } from './mirror'
 
 /**
  * QQ Music read-only account adapter. Request format follows qqmusic-api and
@@ -209,6 +209,7 @@ export const readQQMusicPlaylists = async (credential: QQMusicCredential): Promi
 }
 export const syncQQMusicAccount = async (credential: QQMusicCredential) => {
   const lists = await readQQMusicPlaylists(credential)
+  const { applyExternalMirrors } = await import('./mirror')
   return applyExternalMirrors('qqmusic:' + credential.musicId, lists)
 }
 
