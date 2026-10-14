@@ -164,3 +164,25 @@ test('Kugou malformed metadata prevents destructive updates', async (t) => {
     /元数据返回不完整/
   )
 })
+
+
+test('QQ radar recommendations map real VecSongs.Track response to daily playlist', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    if (String(url).includes('fcg_get_profile_homepage')) {
+      return new Response(JSON.stringify({ data: {} }), { status: 200 })
+    }
+    const body = JSON.parse(init.body)
+    const key = Object.keys(body).find((k) => k !== 'comm')
+    const data = key === 'music.musicasset.PlaylistBaseRead'
+      ? { v_playlist: [] }
+      : { VecSongs: [{ Track: {
+        id: 998, mid: '003xyz', name: '个性化推荐', singer: [{ name: '歌手' }],
+        album: { mid: 'album-a', name: '专辑 A' }, interval: 206,
+      } }] }
+    return new Response(JSON.stringify({ code: 0, [key]: { code: 0, data } }), { status: 200 })
+  })
+  const lists = await readQQMusicPlaylists({ musicId: '12345678', musicKey: 'test' })
+  assert.deepEqual(lists.map((x) => x.name), ['QQ音乐·每日推荐'])
+  assert.equal(lists[0].list[0].id, 'tx_003xyz')
+  assert.equal(lists[0].list[0].interval, '03:26')
+})
