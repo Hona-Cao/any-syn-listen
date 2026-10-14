@@ -3,6 +3,7 @@ import { Notification } from 'electron'
 import {
   getSyncWebDAVState,
   configureNeteaseSessionProvider,
+  configureOtherMusicSessionProvider,
   runSyncWebDAV as runSyncWebDAVOriginal,
   cancelWebDAVSyncTask,
   runWebDAVSyncTask,
@@ -12,6 +13,7 @@ import {
 
 import { appEvent, appState, updateSetting } from '@/app'
 import { readSecureNeteaseCookie, writeSecureNeteaseCookie } from '@/modules/neteaseLogin'
+import { readAccountSecret } from '@/modules/accountVault'
 
 const init = (immediately?: boolean) => {
   if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable']) {
@@ -21,6 +23,16 @@ const init = (immediately?: boolean) => {
   }
 }
 export const initSync = async () => {
+  configureOtherMusicSessionProvider({
+    getQQ: async () => {
+      const raw = await readAccountSecret('qqmusic')
+      return raw ? JSON.parse(raw) as import('@any-listen/app/modules/sync/external/qqMusic').QQMusicCredential : null
+    },
+    getKugou: async () => {
+      const raw = await readAccountSecret('kugou')
+      return raw ? JSON.parse(raw) as import('@any-listen/app/modules/sync/external/kugouMusic').KugouAccount : null
+    },
+  })
   configureNeteaseSessionProvider({
     getCookie: async () => appState.appSetting['sync.netease.cookie'] || await readSecureNeteaseCookie(),
     saveCookie: async (cookie) => {
