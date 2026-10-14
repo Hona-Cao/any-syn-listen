@@ -1,0 +1,37 @@
+name: Windows portable experimental build (no Codex)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-portable.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  portable-windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install runtime and native dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Compile complete desktop application
+        run: pnpm -F @shared/scripts build:desktop
+      - name: Package unsigned portable Windows x64
+        run: pnpm -F desktop pack:win:portable:x64
+      - name: Upload unsigned build for user tests (7 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: any-syn-listen-windows-x64-experimental
+          path: build/*.exe
+          if-no-files-found: error
+          retention-days: 7
