@@ -211,3 +211,12 @@ export const syncQQMusicAccount = async (credential: QQMusicCredential) => {
   const lists = await readQQMusicPlaylists(credential)
   return applyExternalMirrors('qqmusic:' + credential.musicId, lists)
 }
+
+/** Validates account credentials without importing or mutating any playlist. */
+export const validateQQMusicCredential = async (credential: QQMusicCredential): Promise<void> => {
+  const data = await requestQQ<{ v_playlist?: QQPlaylist[] }>(
+    credential, 'music.musicasset.PlaylistBaseRead', 'music.musicasset.PlaylistBaseRead',
+    'GetPlaylistByUin', { uin: credential.musicId }
+  )
+  if (!Array.isArray(data.v_playlist)) throw new Error('QQ Music login expired')
+}
