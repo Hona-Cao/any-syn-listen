@@ -57,6 +57,12 @@ export const createClientApp = (main: MainCall) => {
     async loginKugouInWindow() {
       return main.loginKugouInWindow()
     },
+    async requestMusicSMSCode(platform, phone) {
+      return main.requestMusicSMSCode(platform, phone)
+    },
+    async loginMusicWithSMSCode(platform, phone, code) {
+      return main.loginMusicWithSMSCode(platform, phone, code)
+    },
     async getAppInfo() {
       return main.getAppInfo()
     },
