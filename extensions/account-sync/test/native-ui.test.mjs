@@ -23,7 +23,7 @@ function harness(){
 }
 test('native manifest declares settings with the official CheckboxMultiple and command schema',async()=>{
  const manifest=JSON.parse(await fs.readFile('dist/manifest.json','utf8'))
- assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.2')
+ assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.3')
  const settings=manifest.contributes.settings
  assert.ok(settings.some(x=>x.type==='configCheckboxMultiple'&&x.actionCommands.includes('loginNetease')))
  assert.equal(settings.some(x=>x.field==='selectedPlaylists'),false)
@@ -97,9 +97,27 @@ test('WebDAV connection edits all fields inline and masks password after saving'
  assert.equal(h.configs.get('webdavUrl'),'')
  assert.equal(h.configs.get('webdavPassword'),'')
 })
-test('NetEase website login can be cancelled without phone SMS',async()=>{
+test('NetEase account login delegates to automatic native QR flow, not Cookie instructions',async()=>{
  const h=harness();const c=new NativeController(h.api)
+ let called=false
+ c.portable.login=async(source)=>{
+   assert.equal(source,'netease')
+   called=true
+   return false
+ }
  await c.neteaseLogin()
+ assert.equal(called,true)
  assert.equal(h.network.length,0)
- assert.ok(h.messages[0].options.buttons.some(x=>x.link==='https://music.163.com/#/login'))
+ assert.ok(!h.messages.some(x=>String(x.text).includes('Cookie')))
+})
+test('native settings keep matching groups, concise labels, and no manual Cookie button',async()=>{
+ const manifest=JSON.parse(await fs.readFile('dist/manifest.json','utf8'))
+ const settings=manifest.contributes.settings
+ assert.equal(settings.length,6)
+ assert.equal(settings[0].name,'音乐账号')
+ assert.equal(settings[1].name,'LX N · WebDAV')
+ assert.deepEqual(settings[0].actionCommandNames,['网易云登录','QQ 音乐登录','酷狗登录','同步歌单'])
+ assert.deepEqual(settings[1].actionCommandNames,['保存设置','断开连接'])
+ assert.deepEqual(settings.slice(2).map(x=>x.name),['服务器地址','登录账号','应用密码','歌单目录'])
+ assert.ok(settings.every(x=>!JSON.stringify(x).includes('Cookie')))
 })
