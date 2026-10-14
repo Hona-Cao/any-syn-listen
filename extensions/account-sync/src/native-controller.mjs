@@ -3,7 +3,7 @@ import {CatalogEngine,registerCatalogResources} from './catalog-engine.mjs'
 import {PortableClient} from './portable-client.mjs'
 import {cleanMessage} from './portable-utils.mjs'
 
-const PLATFORM_LABEL={netease:'网易云',qqmusic:'QQ音乐',kugou:'酷狗'}
+const PLATFORM_LABEL={netease:'网易云音乐',qqmusic:'QQ 音乐',kugou:'酷狗音乐'}
 const SOURCES=['netease','qqmusic','kugou','lx']
 const STALE_MESSAGE='未登录'
 const DAV_MASK='●●●●●●●●'
@@ -46,13 +46,13 @@ export class NativeController {
     const label=Object.entries(PLATFORM_LABEL).map(([id,name])=>{
       const status=backend.accounts[id]||{}
       const count=all.filter(x=>String(x.meta?.externalMirror??'').startsWith(id+':')).length
-      return {id,name:name+' · '+(status.stage==='syncing'?'同步中':
+      return {id,name:name+'  ·  '+(status.stage==='syncing'?'同步中':
         status.stage==='error'?'同步失败':status.stage==='authorizing'?'等待扫码':status.stage==='scanned'?'已扫码，待确认':status.stage==='validating'?'验证账号中':count?count+' 个歌单':
           status.connected?'已登录':STALE_MESSAGE)}
     })
     const ui={
       accountItems:label,
-      webdavItems:[{id:'lx',name:backend.webdav?.configured?'已连接':'未设置'}],
+      webdavItems:[{id:'lx',name:'LX N Music  ·  '+(backend.webdav?.configured?'已连接':'未连接')}],
       playlistItems:this.visible.map(x=>({id:x.id,name:x.name})),
       archiveItems:this.engine.state.archives.filter(x=>!x.restoredAt).map(x=>({
         id:x.id,name:(x.kind==='delete'?'回收站':'归档')+' · '+(x.names?.slice(0,2).join('、')??'歌单')
@@ -139,10 +139,9 @@ export class NativeController {
     }
   }
   async neteaseLogin(){
-    // SMS-only WEAPI is frequently blocked by security verification.
-    // Prefer official web login + explicit user-provided Cookie; no attempt
-    // to scrape another application's HttpOnly browser cookies.
-    return this.webLogin('netease')
+    // Native login window stays in AnyListen. The QR is issued and checked by
+    // NetEase: no browser cookie scraping, companion EXE or manual tokens.
+    return this.login('netease')
   }
   async captureWebdavPassword(){
     const [value]=await this.configs(['webdavPassword'])
