@@ -28,6 +28,7 @@ export type ExposeServerFunctions = Omit<
   | 'getSystemFonts'
   | 'minWindow'
   | 'fullscreenWindow'
+  | 'loginNeteaseInWindow'
 >
 export type ClientCall = AnyListen.IPC.ClientIPC
 
