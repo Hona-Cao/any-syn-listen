@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '@/plugins/i18n'
-  import { loginNeteaseInWindow } from '@/shared/ipc/app'
+  import { loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
@@ -48,6 +48,10 @@
   let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
   let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
   let neteaseLoginMessage = $state('')
+  let qqEnable = $state(settingState.setting['sync.qq.enable'])
+  let qqMessage = $state('')
+  let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
+  let kugouMessage = $state('')
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
@@ -240,6 +244,59 @@
         />
         <p class="small">手动输入的 Cookie 将保存在本机应用配置中（未额外加密）。桌面端建议使用上方的官方登录窗口。自动同步账号歌单约每三小时一次，续期最多每十八小时尝试一次；不保证永不过期。</p>
       </div>
+    {/if}
+    {#if import.meta.env.VITE_IS_DESKTOP}
+      <div class="gap-top">
+        <Checkbox
+          id="sync.qq.enable"
+          label="同步 QQ 音乐账号的歌单和我喜欢（只读镜像）"
+          checked={qqEnable}
+          onchange={(value) => {
+            qqEnable = value
+            void updateSetting({ 'sync.qq.enable': value })
+          }}
+        />
+      </div>
+      <div class="gap-top">
+        <Btn onclick={async () => {
+          qqMessage = ''
+          try {
+            const ok = await loginQQMusicInWindow()
+            qqMessage = ok ? 'QQ 音乐已授权，登录信息已加密保存。' : '已关闭登录窗口，原有登录状态未改变。'
+            if (ok) qqEnable = true
+          } catch (error) {
+            qqMessage = (error as Error).message
+          }
+        }}>打开 QQ 音乐官方登录窗口</Btn>
+      </div>
+      {#if qqMessage}<p class="small">{qqMessage}</p>{/if}
+      <div class="gap-top">
+        <Checkbox
+          id="sync.kugou.enable"
+          label="同步酷狗音乐账号歌单（只读镜像）"
+          checked={kugouEnable}
+          onchange={(value) => {
+            kugouEnable = value
+            void updateSetting({ 'sync.kugou.enable': value })
+          }}
+        />
+      </div>
+      <div class="gap-top">
+        <Btn onclick={async () => {
+          kugouMessage = ''
+          try {
+            const ok = await loginKugouInWindow()
+            kugouMessage = ok ? '酷狗音乐扫码授权完成，登录信息已加密保存。' : '扫码已取消或超时。'
+            if (ok) kugouEnable = true
+          } catch (error) {
+            kugouMessage = (error as Error).message
+          }
+        }}>酷狗音乐扫码登录（原生接口）</Btn>
+      </div>
+      {#if kugouMessage}<p class="small">{kugouMessage}</p>{/if}
+      <p class="small">QQ/酷狗登录信息由系统安全存储加密。登录失效需要重新授权，当前暂不保证 QQ/酷狗凭据自动刷新；不会因此删除现有镜像。</p>
+    {:else}
+      <p class="small">QQ 音乐及酷狗音乐账号登录目前仅支持桌面客户端，Web 服务暂不提供账户凭据管理。</p>
     {/if}
     <div class="gap-top">
       <Btn disabled={disabledSyncBtn} onclick={runSync}>{$t('settings.dataSync.webdav_sync')}</Btn>
