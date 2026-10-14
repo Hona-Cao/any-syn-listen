@@ -28,9 +28,9 @@ const convert = (s: Song): AnyListen.Music.MusicInfoOnline => ({
 export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid: number; lists: MirrorPlaylist[] }> => {
   if (!/(?:^|;\s*)MUSIC_U=/.test(cookie)) throw new Error('NetEase MUSIC_U cookie required')
   const uid = await getNeteaseAccountId(cookie)
-  const playlists: Array<{ id: number; name: string }> = []
+  const playlists: Array<{ id: number; name: string; specialType?: number }> = []
   for (let offset = 0; offset < 5000; offset += 200) {
-    const page = await post<{ code: number; playlist: Array<{ id: number; name: string }> }>(
+    const page = await post<{ code: number; playlist: Array<{ id: number; name: string; specialType?: number }> }>(
       'user/playlist', cookie, { uid, offset, limit: 200, total: true, includeVideo: true }
     )
     if (!Array.isArray(page.playlist)) throw new Error('NetEase returned invalid account playlists')
@@ -65,13 +65,38 @@ export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid
       }
     }
     if (songs.length !== ids.length) throw new Error('NetEase song list contains missing tracks')
-    mirrors.push({ key: 'playlist:' + item.id, name: '网易云 · ' + item.name, list: songs })
+    const loved = item.specialType === 5 || /喜欢的音乐$/.test(item.name)
+    mirrors.push({ key: loved ? 'love' : 'playlist:' + item.id, name: loved ? '网易云·我喜欢' : '网易云·' + item.name, list: songs })
+  }
+  if (!mirrors.some((item) => item.key === 'love')) {
+    try {
+      const liked = await post<{ code: number; ids?: number[] }>('song/like/get', cookie, { uid: String(uid) })
+      if (Array.isArray(liked.ids)) {
+        const tracks: AnyListen.Music.MusicInfoOnline[] = []
+        for (let start = 0; start < liked.ids.length; start += 300) {
+          const ids = liked.ids.slice(start, start + 300)
+          const detail = await post<{ code: number; songs: Song[] }>(
+            'v3/song/detail', cookie, { c: JSON.stringify(ids.map((id) => ({ id }))) }
+          )
+          if (!Array.isArray(detail.songs) || detail.songs.length < ids.length) throw new Error('Incomplete NetEase likes')
+          const map = new Map(detail.songs.map((song) => [song.id, song]))
+          for (const id of ids) {
+            const found = map.get(id)
+            if (!found) throw new Error('Missing NetEase liked track')
+            tracks.push(convert(found))
+          }
+        }
+        mirrors.push({ key: 'love', name: '网易云·我喜欢', list: tracks })
+      }
+    } catch {
+      // A private likes endpoint must not prevent syncing daily songs or user playlists.
+    }
   }
   const daily = await post<{ code: number; data?: { dailySongs?: Song[] } }>(
     'v3/discovery/recommend/songs', cookie, { offset: 0, total: true, limit: 30 }
   )
   if (daily.data?.dailySongs) {
-    mirrors.push({ key: 'daily', name: '网易云 · 每日推荐', list: daily.data.dailySongs.map(convert) })
+    mirrors.push({ key: 'daily', name: '网易云·每日推荐', list: daily.data.dailySongs.map(convert) })
   }
   return { uid, lists: mirrors }
 }
