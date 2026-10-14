@@ -10,7 +10,7 @@ import {
 import { appEvent, appState } from '@/app/app'
 
 const init = (immediately?: boolean) => {
-  if (appState.appSetting['sync.webdav.enable']) {
+  if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable']) {
     runWebDAVSyncTask(immediately)
   } else {
     cancelWebDAVSyncTask()
@@ -18,7 +18,7 @@ const init = (immediately?: boolean) => {
 }
 export const initSync = async () => {
   appEvent.on('updated_config', (keys, settings) => {
-    if (keys.includes('sync.webdav.enable')) {
+    if (keys.some((key) => key === 'sync.webdav.enable' || key === 'sync.lxWebdav.enable' || key === 'sync.netease.enable')) {
       init()
     }
   })
