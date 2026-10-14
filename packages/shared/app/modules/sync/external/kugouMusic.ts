@@ -130,7 +130,9 @@ export const convertKugouSong = (raw: Row): AnyListen.Music.MusicInfoOnline | nu
   const info = asObj(raw.audio_info)
   const album = asObj(raw.album_info)
   const audioId = numeric(info.audio_id ?? raw.audio_id ?? raw.audioid ?? raw.album_audio_id)
-  const musicId = audioId || hash
+  const title = str(raw.songname ?? raw.ori_audio_name ?? raw.audio_name ?? raw.name)
+  if (!audioId || !title) return null
+  const musicId = audioId
   const seconds = Number(info.timelength ?? raw.timelength ?? 0) / 1000
   const qualitys: AnyListen.Music.MusicQualityType = {
     '128k': { sizeStr: sizeStr(info.filesize ?? raw.filesize), hash },
@@ -146,7 +148,7 @@ export const convertKugouSong = (raw: Row): AnyListen.Music.MusicInfoOnline | nu
   }
   return {
     id: 'kg_' + musicId + '_' + hash,
-    name: str(raw.songname ?? raw.ori_audio_name ?? raw.audio_name ?? raw.name) || '未命名歌曲',
+    name: title,
     singer: str(raw.author_name ?? raw.singername ?? raw.singer),
     interval: seconds > 0 && Number.isFinite(seconds)
       ? String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(Math.floor(seconds % 60)).padStart(2, '0')
@@ -166,6 +168,66 @@ export const convertKugouSong = (raw: Row): AnyListen.Music.MusicInfoOnline | nu
     },
   }
 }
+/**
+ * Cloudlist occasionally returns only the file hash. Use the same read-only
+ * public detail endpoint as AnyListen's Online Metadata extension to fill
+ * audio_id/title and preserve playable KG song IDs. Do not mirror placeholders.
+ */
+const fillMissingKugouMetadata = async (rows: Row[]): Promise<Row[]> => {
+  const missing: Array<{ index: number; hash: string }> = []
+  rows.forEach((row, index) => {
+    const info = asObj(row.audio_info)
+    const songId = numeric(info.audio_id ?? row.audio_id ?? row.audioid ?? row.album_audio_id)
+    const name = str(row.songname ?? row.ori_audio_name ?? row.audio_name ?? row.name)
+    if (songId && name) return
+    const hash = md5Hash(row.hash ?? row.filehash ?? row.file_hash)
+    if (!hash) throw new Error('酷狗云端歌曲缺少有效 hash')
+    missing.push({ index, hash })
+  })
+  for (let start = 0; start < missing.length; start += 100) {
+    const batch = missing.slice(start, start + 100)
+    const response = await fetch('https://gateway.kugou.com/v2/album_audio/audio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'KG-THash': '13a3164',
+        'KG-RC': '1',
+        'KG-Fake': '0',
+        'KG-RF': '00869891',
+        'User-Agent': 'Android712-AndroidPhone-11451-376-0-FeeCacheUpdate-wifi',
+        'x-router': 'kmr.service.kugou.com',
+      },
+      body: JSON.stringify({
+        area_code: '1', show_privilege: 1, show_album_info: '1',
+        is_publish: '', appid: 1005, clientver: 11451,
+        mid: '1', dfid: '-', clienttime: Date.now(),
+        key: 'OIlwieks28dk2k092lksi2UIkp',
+        fields: 'album_info,author_name,audio_info,ori_audio_name,base,songname',
+        data: batch.map(({ hash }) => ({ hash })),
+      }),
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!response.ok) throw new Error('酷狗歌曲元数据请求失败：' + response.status)
+    const body = await response.json() as { error_code?: number; data?: unknown[] }
+    if (body.error_code !== 0 || !Array.isArray(body.data) || body.data.length !== batch.length) {
+      throw new Error('酷狗歌曲元数据返回不完整')
+    }
+    batch.forEach(({ index }, j) => {
+      const detail = body.data?.[j]
+      const candidate = Array.isArray(detail) ? detail[0] : undefined
+      const info = asObj(candidate)
+      if (!Object.keys(info).length) throw new Error('酷狗歌曲详情缺失，保持本地镜像不变')
+      rows[index] = {
+        ...rows[index],
+        ...info,
+        hash: batch[j].hash,
+        audio_info: { ...asObj(rows[index].audio_info), ...asObj(info.audio_info) },
+      }
+    })
+  }
+  return rows
+}
+
 interface PlaylistItem { id: string; name: string; count: number }
 const readPlaylistItems = async (account: KugouAccount): Promise<PlaylistItem[]> => {
   const PAGE = 100
@@ -226,9 +288,9 @@ const readSongs = async (account: KugouAccount, id: string): Promise<AnyListen.M
       }
       expected = total
     }
-    for (const raw of rows) {
-      const song = convertKugouSong(asObj(raw))
-      if (!song) throw new Error('酷狗歌曲缺少 hash，拒绝覆盖本地镜像')
+    for (const raw of await fillMissingKugouMetadata(rows.map(asObj))) {
+      const song = convertKugouSong(raw)
+      if (!song) throw new Error('酷狗歌曲无法解析，拒绝覆盖本地镜像')
       songs.push(song)
     }
     if (expected != null && songs.length >= expected) {
