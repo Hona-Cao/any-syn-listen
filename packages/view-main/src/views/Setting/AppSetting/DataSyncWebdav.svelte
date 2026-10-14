@@ -44,6 +44,8 @@
   let password = $state(settingState.setting['sync.webdav.password'])
   let enableList = $state(settingState.setting['sync.webdav.syncEnable.list'])
   let enableDislike = $state(settingState.setting['sync.webdav.syncEnable.dislike'])
+  let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
+  let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
@@ -186,6 +188,31 @@
           onblur={() => { void updateSetting({ 'sync.lxWebdav.path': lxPath }) }}
         />
         <p class="small">使用上方 WebDAV 服务器和凭据；每 3 分钟检查一次 playlists.json。此功能不会覆盖 AnyListen 原有列表。</p>
+      </div>
+    {/if}
+    <div class="gap-top">
+      <Checkbox
+        label="网易云账号歌单与每日推荐（只读同步）"
+        id="sync.netease.enable"
+        checked={neteaseEnable}
+        onchange={(val) => {
+          neteaseEnable = val
+          void updateSetting({ 'sync.netease.enable': val })
+        }}
+      />
+    </div>
+    {#if neteaseEnable}
+      <div class="gap-top">
+        <Input
+          id="sync.netease.cookie"
+          class="input-url"
+          type="password"
+          placeholder="网易云 Cookie（至少包含 MUSIC_U）"
+          value={neteaseCookie}
+          onchange={(val) => { neteaseCookie = val }}
+          onblur={() => { void updateSetting({ 'sync.netease.cookie': neteaseCookie }) }}
+        />
+        <p class="small">登录凭据只保存于当前应用配置，不会写入 WebDAV 歌单文件。请勿分享 Cookie。</p>
       </div>
     {/if}
     <div class="gap-top">
