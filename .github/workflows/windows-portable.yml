@@ -27,6 +27,14 @@ jobs:
           cache: pnpm
       - name: Install runtime and native dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify test build cannot overwrite official AnyListen data
+        shell: pwsh
+        run: |
+          git rev-parse --short HEAD
+          $config = Get-Content "packages/desktop/build-config/build-pack.cjs" -Raw
+          $app = Get-Content "packages/desktop/src/app/index.ts" -Raw
+          if (!$config.Contains("productName: 'any-syn-listen'")) { throw 'Fork app identity missing' }
+          if (!$app.Contains("AnySynListenDatas")) { throw 'Isolated user directory missing' }
       - name: Compile complete desktop application
         run: pnpm -F @shared/scripts build:desktop
       - name: Package unsigned portable Windows x64
