@@ -21,6 +21,9 @@ export declare type ServerCommonActions = WarpPromiseRecord<{
   openUrl: (url: string) => void
   setSystemThemeMode: (isDark: boolean) => void
 
+  /** Open a sandboxed official NetEase login page and capture session in main process. */
+  loginNeteaseInWindow: () => boolean
+
   /** 获取应用信息 */
   getAppInfo: () => { machineId: string; proxyServerHost: string }
   /** 获取配置 */
