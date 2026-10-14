@@ -45,6 +45,8 @@ export type ExposeClientFunctions = Omit<
   | 'loginNeteaseInWindow'
   | 'loginQQMusicInWindow'
   | 'loginKugouInWindow'
+  | 'requestMusicSMSCode'
+  | 'loginMusicWithSMSCode'
 >
 
 let isInitialized = false
