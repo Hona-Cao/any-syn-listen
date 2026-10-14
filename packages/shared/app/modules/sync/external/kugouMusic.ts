@@ -57,7 +57,7 @@ const requestGateway = async (
   const signed = Object.keys(data).sort().map((key) => key + '=' + str(data[key])).join('')
   const signature = md5(salt + signed + json + salt)
   const base = login ? 'https://login-user.kugou.com' : 'https://gateway.kugou.com'
-  const query = new URLSearchParams(Object.entries({ ...data, signature }).map(([key, value]) => [key, str(value)]))
+  const query = new URLSearchParams(Object.entries({ ...data, signature }).map(([key, value]): [string, string] => [key, str(value)]))
   let response: Response
   try {
     response = await fetch(base + path + '?' + query.toString(), {
