@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 
-import { applyExternalMirrors, type MirrorPlaylist } from './mirror'
+import type { MirrorPlaylist } from './mirror'
 
 /**
  * Read-only first-party Kugou gateway client. Endpoint shapes are based on
@@ -254,5 +254,8 @@ export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorP
   }
   return mirrors
 }
-export const syncKugouAccount = async (account: KugouAccount) =>
-  applyExternalMirrors('kugou:' + account.userId, await readKugouPlaylists(account))
+export const syncKugouAccount = async (account: KugouAccount) => {
+  const playlists = await readKugouPlaylists(account)
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('kugou:' + account.userId, playlists)
+}
