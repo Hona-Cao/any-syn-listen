@@ -15,7 +15,7 @@ import { rendererIPC } from '@/renderer/winMain/rendererEvent'
 import { buildElectronProxyConfig, trashItem } from '@/shared/electron'
 import { log, logger } from '@/shared/log'
 import { setProxyByHost } from '@/shared/request'
-import { startCheckUpdateTimeout, update } from '@/shared/update'
+import { update } from '@/shared/update'
 
 import { version } from '../../package.json'
 import { setSkipTrayQuit } from './actions'
