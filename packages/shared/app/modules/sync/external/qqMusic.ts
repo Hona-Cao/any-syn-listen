@@ -176,35 +176,106 @@ const encryptedUin = async (credential: QQMusicCredential): Promise<string> => {
   const body = await resp.json() as { data?: { creator?: { encrypt_uin?: string } } }
   return body.data?.creator?.encrypt_uin ?? ''
 }
+const qqSongRows = (input: unknown): QQSong[] => {
+  if (!input || typeof input !== 'object') return []
+  const obj = input as Record<string, unknown>
+  const rows = Array.isArray(obj.VecSongs)
+    ? obj.VecSongs.map((row: { Track?: QQSong }) => row.Track)
+    : Array.isArray(obj.tracks) ? obj.tracks
+      : Array.isArray(obj.songlist) ? obj.songlist : []
+  return rows.filter((item): item is QQSong => item != null && typeof item === 'object')
+}
+
+const getQQDaily = async (credential: QQMusicCredential): Promise<MirrorPlaylist | null> => {
+  let rows: QQSong[] = []
+  try {
+    const data = await requestQQ<Record<string, unknown>>(
+      credential, 'music.recommend.TrackRelationServer', 'music.recommend.TrackRelationServer',
+      'GetRadarSong', { Page: 1, ReqType: 0, FavSongs: [], EntranceSongs: [] }
+    )
+    rows = qqSongRows(data)
+  } catch {
+    // Try the personalized radio, not a generic public chart.
+  }
+  if (!rows.length) {
+    const data = await requestQQ<Record<string, unknown>>(
+      credential, 'music.radioProxy.MbTrackRadioSvr', 'music.radioProxy.MbTrackRadioSvr',
+      'get_radio_track', { id: 99, num: 30, from: 0, scene: 0, song_ids: [] }
+    )
+    rows = qqSongRows(data)
+  }
+  const songs = rows.map(convertQQSong).filter((s): s is AnyListen.Music.MusicInfoOnline => s !== null)
+  return songs.length ? { key: 'daily', name: 'QQ音乐·每日推荐', list: songs } : null
+}
+
 export const readQQMusicPlaylists = async (credential: QQMusicCredential): Promise<MirrorPlaylist[]> => {
   const data = await requestQQ<{ v_playlist?: QQPlaylist[] }>(
     credential, 'music.musicasset.PlaylistBaseRead', 'music.musicasset.PlaylistBaseRead',
     'GetPlaylistByUin', { uin: credential.musicId }
   )
-  if (!Array.isArray(data.v_playlist)) throw new Error('QQ Music user playlists missing')
+  if (!Array.isArray(data.v_playlist)) throw new Error('QQ 音乐没有返回账号歌单')
   const lists: MirrorPlaylist[] = []
   const seen = new Set<string>()
+  const errors: string[] = []
+  let euin = ''
+  try { euin = await encryptedUin(credential) } catch { /* Other playlists can still sync. */ }
+
   for (const item of data.v_playlist) {
     const dirId = item.dirId ?? 0
     const dissId = item.tid ?? 0
     const key = dirId === 201 ? 'love' : 'playlist:' + (dissId || dirId)
     if ((!dissId && !dirId) || seen.has(key)) continue
     seen.add(key)
-    const songs = await details(credential, dissId, dirId, dirId === 201 ? await encryptedUin(credential) : '')
-    lists.push({
-      key,
-      name: dirId === 201 ? 'QQ 音乐 · 我喜欢' : 'QQ 音乐 · ' + (item.dirName ?? item.name ?? '歌单'),
-      list: songs,
-    })
-  }
-  // Some API versions omit "My Favorites" in v_playlist.
-  if (!seen.has('love')) {
-    const euin = await encryptedUin(credential)
-    if (euin) {
-      const songs = await details(credential, 0, 201, euin)
-      lists.push({ key: 'love', name: 'QQ 音乐 · 我喜欢', list: songs })
+    try {
+      const songs = await details(credential, dissId, dirId, dirId === 201 ? euin : '')
+      lists.push({
+        key,
+        name: dirId === 201 ? 'QQ音乐·我喜欢' : 'QQ音乐·' + (item.dirName ?? item.name ?? '歌单'),
+        list: songs,
+      })
+    } catch {
+      errors.push(key)
     }
   }
+  if (!seen.has('love') && euin) {
+    try {
+      const songs = await details(credential, 0, 201, euin)
+      lists.push({ key: 'love', name: 'QQ音乐·我喜欢', list: songs })
+    } catch {
+      errors.push('love')
+    }
+  }
+  // Created lists and favorited public lists are separate endpoints.
+  if (euin) {
+    try {
+      const favorites = await requestQQ<{ v_list?: Array<{ id?: number; tid?: number; title?: string; name?: string }> }>(
+        credential, 'music.musicasset.PlaylistFavRead', 'music.musicasset.PlaylistFavRead',
+        'CgiGetPlaylistFavInfo', { uin: euin, offset: 0, size: 100 }
+      )
+      if (Array.isArray(favorites.v_list)) {
+        for (const favorite of favorites.v_list) {
+          const id = favorite.id ?? favorite.tid ?? 0
+          const key = 'fav:' + id
+          if (!id || seen.has(key)) continue
+          seen.add(key)
+          try {
+            const songs = await details(credential, id, 0)
+            lists.push({ key, name: 'QQ音乐·' + (favorite.title ?? favorite.name ?? '收藏歌单'), list: songs })
+          } catch { errors.push(key) }
+        }
+      }
+    } catch {
+      // Some accounts have private favorites: keep already fetched lists.
+    }
+  }
+  try {
+    const daily = await getQQDaily(credential)
+    if (daily) lists.push(daily)
+  } catch {
+    errors.push('daily')
+  }
+  if (errors.length) console.warn('[QQ] Some playlists unavailable:', errors.join(','))
+  if (!lists.length) throw new Error('QQ 音乐已登录，但暂时无法获取歌单或推荐，请稍后重试')
   return lists
 }
 export const syncQQMusicAccount = async (credential: QQMusicCredential) => {
