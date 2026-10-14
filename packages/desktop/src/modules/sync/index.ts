@@ -1,3 +1,5 @@
+import { Notification } from 'electron'
+
 import {
   getSyncWebDAVState,
   configureNeteaseSessionProvider,
@@ -24,6 +26,12 @@ export const initSync = async () => {
     saveCookie: async (cookie) => {
       await writeSecureNeteaseCookie(cookie)
       if (appState.appSetting['sync.netease.cookie']) updateSetting({ 'sync.netease.cookie': '' })
+    },
+    notifyReauth: () => {
+      if (Notification.isSupported()) new Notification({
+        title: 'AnyListen · 网易云登录已失效',
+        body: '请进入设置，重新通过官方登录窗口授权。歌单数据不会被删除。',
+      }).show()
     },
   })
   appEvent.on('updated_config', (keys, settings) => {
