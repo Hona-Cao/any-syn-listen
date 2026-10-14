@@ -1,5 +1,6 @@
 import { getSettings } from '../../../common'
 import { syncLXWebDAV } from '../external/lxWebdav'
+import { syncNeteaseAccount } from '../external/netease'
 import { sendSyncWebDAVStatus } from './shared'
 import { state } from './state'
 import { cancelSyncWebDAV, getSyncWebDAVState, runSyncWebDAV } from './sync'
@@ -8,6 +9,11 @@ const handleSync = async () => {
   const state = getSyncWebDAVState()
   if (state.status !== 'idle' && state.status !== 'error') return
   const settings = getSettings()
+  if (settings['sync.netease.enable'] && settings['sync.netease.cookie']) {
+    await syncNeteaseAccount(settings['sync.netease.cookie']).catch((err: Error) => {
+      console.warn('[NetEase] Failed to import account playlists:', err.message)
+    })
+  }
   if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
     await syncLXWebDAV({
       url: settings['sync.webdav.url'],
