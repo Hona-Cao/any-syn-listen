@@ -9,6 +9,7 @@ import { cancelSyncWebDAV, getSyncWebDAVState, runSyncWebDAV } from './sync'
 export interface NeteaseSessionProvider {
   getCookie: () => Promise<string>
   saveCookie: (cookie: string) => Promise<void>
+  notifyReauth?: () => void | Promise<void>
 }
 let neteaseSessionProvider: NeteaseSessionProvider | undefined
 export const configureNeteaseSessionProvider = (provider: NeteaseSessionProvider) => {
@@ -22,6 +23,7 @@ let neteaseLastTry = 0
 let neteaseLastRefresh = 0
 let neteaseLastCookie = ''
 let neteaseSyncInProgress = false
+let reauthNotified = false
 
 const syncNeteaseIfDue = async () => {
   const settings = getSettings()
@@ -33,6 +35,7 @@ const syncNeteaseIfDue = async () => {
     neteaseLastSync = 0
     neteaseLastTry = 0
     neteaseLastRefresh = 0
+    reauthNotified = false
   }
   const now = Date.now()
   if (now - neteaseLastSync < NETEASE_LIST_INTERVAL || now - neteaseLastTry < NETEASE_RETRY_INTERVAL) return
@@ -56,8 +59,14 @@ const syncNeteaseIfDue = async () => {
     }
     await syncNeteaseAccount(cookie)
     neteaseLastSync = Date.now()
+    reauthNotified = false
   } catch (err) {
-    console.warn('[NetEase] Account synchronization failed:', (err as Error).message)
+    const message = (err as Error).message
+    console.warn('[NetEase] Account synchronization failed:', message)
+    if (!reauthNotified && /\b(301|401)\b|expired|not authenticated|login expired/i.test(message)) {
+      reauthNotified = true
+      await neteaseSessionProvider?.notifyReauth?.()
+    }
   } finally {
     neteaseSyncInProgress = false
   }
