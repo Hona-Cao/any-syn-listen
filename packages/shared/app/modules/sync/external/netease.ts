@@ -1,5 +1,6 @@
 import type { MirrorPlaylist } from './mirror'
-import { getNeteaseAccountId, requestNetease } from './neteaseSession'
+// @ts-ignore Native Node.js type-strip tests need an explicit TS extension; Vite resolves it.
+import { getNeteaseAccountId, requestNetease } from './neteaseSession.ts'
 
 const post = async <T extends { code: number; message?: string }>(route: string, cookie: string, body: object): Promise<T> => {
   return (await requestNetease<T>(route, cookie, body)).body
