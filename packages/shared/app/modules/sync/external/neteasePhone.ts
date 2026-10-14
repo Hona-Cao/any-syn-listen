@@ -11,7 +11,7 @@ export const sendNeteasePhoneCode = async (phone: string): Promise<void> => {
   const now = Date.now()
   const prev = states.get(phone)
   if (prev && now - prev.sentAt < 60_000) throw new Error('请稍后再获取验证码')
-  const { setCookies } = await requestNetease('captcha/sent', prev?.cookie ?? '', {
+  const { setCookies } = await requestNetease('sms/captcha/sent', prev?.cookie ?? '', {
     cellphone: phone, phone, ctcode: '86',
   })
   states.set(phone, {

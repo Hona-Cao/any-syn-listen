@@ -1,0 +1,17 @@
+{
+  "name": "anylisten-account-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:extension": "extension-kit --build",
+    "build:helper": "node scripts/build-helper.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@any-listen/extension-kit": "0.1.17",
+    "electron": "42.11.12",
+    "esbuild": "0.28.2"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}
