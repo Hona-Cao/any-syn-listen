@@ -20,7 +20,7 @@ const init = (immediately?: boolean) => {
 }
 export const initSync = async () => {
   configureNeteaseSessionProvider({
-    getCookie: async () => (await readSecureNeteaseCookie()) || appState.appSetting['sync.netease.cookie'],
+    getCookie: async () => appState.appSetting['sync.netease.cookie'] || await readSecureNeteaseCookie(),
     saveCookie: async (cookie) => {
       await writeSecureNeteaseCookie(cookie)
       if (appState.appSetting['sync.netease.cookie']) updateSetting({ 'sync.netease.cookie': '' })
