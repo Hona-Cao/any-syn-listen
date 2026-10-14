@@ -1,5 +1,5 @@
 import { runWebDAVSyncTask } from '@any-listen/app/modules/sync'
-import { validateQQMusicCredential, type QQMusicCredential } from '@any-listen/app/modules/sync/external/qqMusic'
+import { validateQQMusicCredential, syncQQMusicAccount, type QQMusicCredential } from '@any-listen/app/modules/sync/external/qqMusic'
 import { BrowserWindow, session } from 'electron'
 
 import { updateSetting } from '@/app'
@@ -49,20 +49,33 @@ export const openQQMusicLoginWindow = (): Promise<boolean> => {
       if (!win.isDestroyed()) win.close()
       resolve(success)
     }
+    const fail = (message: string) => {
+      if (finished) return
+      finished = true
+      clearInterval(ticker)
+      ses.cookies.removeListener('changed', onCookieChanged)
+      if (!win.isDestroyed()) win.close()
+      reject(new Error(message))
+    }
     const verify = async () => {
       if (finished || verifying || Date.now() - lastTry < 3000) return
       lastTry = Date.now()
       verifying = true
+      let authenticated = false
       try {
         const credential = parseCredential(await ses.cookies.get({}))
         if (!credential) return
         await validateQQMusicCredential(credential)
+        authenticated = true
         await writeAccountSecret('qqmusic', JSON.stringify(credential))
         updateSetting({ 'sync.qq.enable': true })
+        await syncQQMusicAccount(credential)
         runWebDAVSyncTask(true)
         finish(true)
-      } catch {
-        // The browser login may not have completed or may require another step.
+      } catch (err) {
+        if (authenticated) {
+          fail('QQ 音乐已登录，但歌单同步失败：' + (err as Error).message)
+        }
       } finally {
         verifying = false
       }
