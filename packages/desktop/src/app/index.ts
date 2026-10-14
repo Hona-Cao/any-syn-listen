@@ -8,7 +8,7 @@ import { DEFAULT_LANG, URL_SCHEME_RXP } from '@any-listen/common/constants'
 import { isUrl } from '@any-listen/common/utils'
 import { parseEnvParams } from '@any-listen/nodejs/env'
 import { checkAndCreateDir } from '@any-listen/nodejs/index'
-import { app, nativeTheme, screen, shell, webContents } from 'electron'
+import { app, nativeTheme, screen, session, shell, webContents } from 'electron'
 
 import { i18n } from '@/i18n'
 import { rendererIPC } from '@/renderer/winMain/rendererEvent'
@@ -137,6 +137,15 @@ export const listenerElectronEvent = () => {
   })
   app.on('web-contents-created', (event, contents) => {
     contents.on('will-navigate', (event, navigationUrl) => {
+      // The external login lives in a sandboxed, dedicated Electron session.
+      if (contents.session === session.fromPartition('persist:netease-auth')) {
+        try {
+          const target = new URL(navigationUrl)
+          if (target.protocol === 'https:' && ['music.163.com', 'passport.163.com', 'reg.163.com'].includes(target.hostname)) return
+        } catch {}
+        event.preventDefault()
+        return
+      }
       if (import.meta.env.DEV) {
         console.log('navigation to url:', navigationUrl.length > 130 ? `${navigationUrl.substring(0, 130)}...` : navigationUrl)
         return
