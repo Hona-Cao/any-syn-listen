@@ -46,7 +46,8 @@ test('QQ user playlist reader paginates and never mutates remote data', async (t
   const result = await readQQMusicPlaylists({ musicId: '12345678', musicKey: 'W_Xexample' })
   assert.equal(result[0].key, 'playlist:1234')
   assert.equal(result[0].list[0].id, 'tx_001abc')
-  assert.equal(requests.filter((r) => r.body).length, 2)
+  assert.equal(requests.filter((r) => r.body).length, 3)
+  assert.ok(result.some((item) => item.name === 'QQ音乐·每日推荐'))
   assert.ok(requests.filter((r) => r.body).every((r) => JSON.stringify(r.body).includes('tmeLoginType')))
 })
 
@@ -59,7 +60,7 @@ test('QQ incomplete song response rejects rather than erases a mirrored playlist
       : { total_song_num: 2, songlist: [{ name: '没有 mid 的歌曲' }] }
     return new Response(JSON.stringify({ code: 0, [key]: { code: 0, data } }), { status: 200 })
   })
-  await assert.rejects(readQQMusicPlaylists({ musicId: '12345678', musicKey: 'valid' }), /unrecognized/)
+  await assert.rejects(readQQMusicPlaylists({ musicId: '12345678', musicKey: 'valid' }), /无法获取歌单或推荐/)
 })
 
 test('Kugou hashes map to AnyListen KG identifiers', () => {
@@ -88,7 +89,7 @@ test('Kugou account read-only mirror fetches playlists and all track pages', asy
   const lists = await readKugouPlaylists(account)
   assert.equal(lists[0].key, 'playlist:33')
   assert.equal(lists[0].list[0].meta.musicId, '555')
-  assert.deepEqual(requested.map((x) => x.route), ['/v7/get_all_list', '/v4/get_list_all_file_v3'])
+  assert.deepEqual(requested.map((x) => x.route), ['/v7/get_all_list', '/v4/get_list_all_file_v3', '/everyday_song_recommend'])
   assert.ok(requested.every((x) => /^[a-f0-9]{32}$/i.test(x.sig)))
 })
 
@@ -144,7 +145,7 @@ test('Kugou hash-only cloud songs obtain metadata before mirroring', async (t) =
   assert.equal(results[0].list[0].id, 'kg_8888_' + hash)
   assert.equal(results[0].list[0].name, '云端元数据歌曲')
   assert.equal(results[0].list[0].interval, '02:22')
-  assert.deepEqual(requested, ['/v7/get_all_list', '/v4/get_list_all_file_v3', '/v2/album_audio/audio'])
+  assert.deepEqual(requested, ['/v7/get_all_list', '/v4/get_list_all_file_v3', '/v2/album_audio/audio', '/everyday_song_recommend'])
 })
 
 test('Kugou malformed metadata prevents destructive updates', async (t) => {
