@@ -1,4 +1,4 @@
-import {platformRequest, mergeCookies, cookiePairs, asObject, stringOf, songDuration} from './portable-utils.mjs'
+import {platformRequest, mergeCookies, cookiePairs, asObject, stringOf, songDuration, wait} from './portable-utils.mjs'
 
 // Uses the WEAPI algorithm already adopted by the official Online Metadata
 // extension. The user's password and SMS code never enter extension storage.
@@ -18,7 +18,7 @@ const encode = async(api, body) => {
   const b64 = await api.utils.dataConverter(encrypted,'base64')
   return { params: second, encSecKey: await api.utils.dataConverter(b64,'base64','hex') }
 }
-export async function wyRequest(api, route, cookie='', data={}) {
+export async function wyRequest(api, route, cookie='', data={}, acceptedCodes=[200]) {
   if (!/^[a-z0-9/_-]+$/i.test(route)) throw new Error('请求路径错误')
   const csrf = cookiePairs(cookie).get('__csrf') ?? ''
   const enc = await encode(api,{ ...data,csrf_token:csrf })
@@ -30,7 +30,7 @@ export async function wyRequest(api, route, cookie='', data={}) {
       ...(cookie?{Cookie:cookie}:{})
     }
   })
-  if (!response.body || Number(response.body.code)!==200)
+  if (!response.body || !acceptedCodes.includes(Number(response.body.code)))
     throw new Error('网易云请求失败：'+String(response.body?.code ?? '未知'))
   return response
 }
@@ -48,6 +48,49 @@ export const convertWYSong = (s) => {
 }
 export class NetEaseAccount {
   constructor(api){ this.api=api; this.pending=new Map() }
+  async loginQR(onStatus=()=>{}) {
+    // QR authorization is completed by NetEase servers. No browser Cookie
+    // inspection, external daemon or manual session copy is required.
+    const response=await wyRequest(this.api,'login/qrcode/unikey','',{type:3})
+    const key=String(response.body?.data?.unikey??response.body?.unikey??'')
+    if(!/^[a-zA-Z0-9_-]{8,128}$/.test(key))
+      throw new Error('网易云暂时无法生成登录二维码，请稍后重试')
+    const loginURL='https://music.163.com/login?codekey='+encodeURIComponent(key)
+    onStatus('authorizing')
+    const choice=await this.api.app.showMessage('打开网易云登录二维码，用手机网易云音乐扫码确认。确认后将自动登录。',{
+      modal:true,buttons:[
+        {text:'取消'},
+        {text:'打开登录二维码',link:loginURL}
+      ]
+    })
+    if(choice!==1)return null
+    const deadline=Date.now()+90_000
+    let failures=0
+    while(Date.now()<deadline){
+      await wait(2000)
+      let poll
+      try {
+        poll=await wyRequest(this.api,'login/qrcode/client/login','',{key,type:3},
+          [800,801,802,803])
+        failures=0
+      }catch{
+        if(++failures>=3)throw new Error('网易云扫码状态查询失败，请检查网络后重试')
+        continue
+      }
+      const status=Number(poll.body.code)
+      if(status===800)throw new Error('网易云二维码已过期，请重新登录')
+      if(status===802){onStatus('scanned');continue}
+      if(status===801)continue
+      if(status!==803)continue
+      onStatus('validating')
+      const cookie=mergeCookies(String(poll.body.cookie??''),poll.headers)
+      if(!cookiePairs(cookie).get('MUSIC_U'))
+        throw new Error('网易云已确认扫码，但没有返回有效登录凭据，请重试')
+      await this.uid(cookie)
+      return {cookie}
+    }
+    throw new Error('网易云扫码超时，请重新登录')
+  }
   async sendSms(phone) {
     if(!/^1\d{10}$/.test(phone)) throw new Error('手机号格式不正确')
     const now=Date.now(), previous=this.pending.get(phone)
