@@ -407,7 +407,7 @@ export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorP
     const songs = await readSongs(account, item.id)
     if (item.count > 0 && songs.length === 0) throw new Error('酷狗歌单非空但歌曲读取失败')
     const loved = /^(?:我喜欢|我的喜欢|我收藏的音乐|喜欢的音乐)$/.test(item.name.trim())
-    mirrors.push({ key: loved ? 'love' : 'playlist:' + item.id, name: loved ? '酷狗·我喜欢' : '酷狗·' + item.name, list: songs })
+    mirrors.push({ key: 'playlist:' + item.id, name: loved ? '酷狗·我喜欢' : '酷狗·' + item.name, list: songs })
   }
   try {
     const daily = await readKugouDaily(account)
