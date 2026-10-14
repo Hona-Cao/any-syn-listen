@@ -118,7 +118,7 @@ export const sendKugouPhoneCode = async (phone: string): Promise<void> => {
   // Send from the application only after an explicit button click. Never use HTTP.
   const response = await requestGateway('/v7/send_mobile_code', mid, {}, {
     businessid: 5, mobile: phone, plat: 3,
-  }, { baseUrl: 'https://login.user.kugou.com' })
+  }, { baseUrl: 'https://login-user.kugou.com' })
   if (Number(response.status) === 0) throw new Error('验证码发送失败')
   kgPhoneStates.set(phone, { mid, sentAt: now, expiresAt: now + 5 * 60_000 })
 }
