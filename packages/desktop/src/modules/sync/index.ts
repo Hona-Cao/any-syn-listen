@@ -16,7 +16,7 @@ import { readSecureNeteaseCookie, writeSecureNeteaseCookie } from '@/modules/net
 import { readAccountSecret } from '@/modules/accountVault'
 
 const init = (immediately?: boolean) => {
-  if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable']) {
+  if (appState.appSetting['sync.webdav.enable'] || appState.appSetting['sync.lxWebdav.enable'] || appState.appSetting['sync.netease.enable'] || appState.appSetting['sync.qq.enable'] || appState.appSetting['sync.kugou.enable']) {
     runWebDAVSyncTask(immediately)
   } else {
     cancelWebDAVSyncTask()
@@ -47,7 +47,7 @@ export const initSync = async () => {
     },
   })
   appEvent.on('updated_config', (keys, settings) => {
-    if (keys.some((key) => key === 'sync.webdav.enable' || key === 'sync.lxWebdav.enable' || key === 'sync.netease.enable')) {
+    if (keys.some((key) => key === 'sync.webdav.enable' || key === 'sync.lxWebdav.enable' || key === 'sync.netease.enable' || key === 'sync.qq.enable' || key === 'sync.kugou.enable')) {
       init()
     }
   })
