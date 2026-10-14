@@ -44,6 +44,8 @@
   let password = $state(settingState.setting['sync.webdav.password'])
   let enableList = $state(settingState.setting['sync.webdav.syncEnable.list'])
   let enableDislike = $state(settingState.setting['sync.webdav.syncEnable.dislike'])
+  let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
+  let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
   const runSync = async () => {
     await runSyncWebDAV(
@@ -162,6 +164,30 @@
         }}
       />
     </div>
+    <div class="gap-top">
+      <Checkbox
+        label="同步 LX N Music 歌单（只读导入，单独创建镜像）"
+        id="sync.lxWebdav.enable"
+        checked={lxEnable}
+        onchange={(val) => {
+          lxEnable = val
+          void updateSetting({ 'sync.lxWebdav.enable': val })
+        }}
+      />
+    </div>
+    {#if lxEnable}
+      <div class="gap-top">
+        <Input
+          id="sync.lxWebdav.path"
+          class="input-url"
+          placeholder="LX N Music 目录，例如 /LX_Music/"
+          value={lxPath}
+          onchange={(val) => { lxPath = val }}
+          onblur={() => { void updateSetting({ 'sync.lxWebdav.path': lxPath }) }}
+        />
+        <p class="small">使用上方 WebDAV 服务器和凭据；每 3 分钟检查一次 playlists.json。此功能不会覆盖 AnyListen 原有列表。</p>
+      </div>
+    {/if}
     <div class="gap-top">
       <Btn disabled={disabledSyncBtn} onclick={runSync}>{$t('settings.dataSync.webdav_sync')}</Btn>
     </div>
