@@ -1,5 +1,20 @@
 // Cross-platform AnyListen extension transport. All requests are made through the
 // official API's internet grant; no localhost server or companion executable.
+export function parseEndpoint(value) {
+  // The official AnyListen extension isolate does not expose global URL.
+  const match=/^(https?):\/\/([^/?#]+)([^#]*)$/i.exec(String(value))
+  if(!match)throw new Error('URL 地址格式错误')
+  const authority=match[2].toLowerCase()
+  if(/[@\\%]/.test(authority))throw new Error('URL 不允许包含账号或编码主机名')
+  const host=authority.replace(/:\d{1,5}$/,'')
+  if(!/^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])$/.test(host))throw new Error('主机名格式错误')
+  const protocol=match[1].toLowerCase()+':'
+  return {protocol,hostname:host,authority,path:match[3]||'/',href:String(value)}
+}
+export const encodeQuery = (params) => Object.entries(params).map(([key,value]) =>
+  encodeURIComponent(key)+'='+encodeURIComponent(String(value))
+).join('&')
+
 export const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
 export const asObject = (v) => isObject(v) ? v : {}
 export const stringOf = (v) => typeof v === 'string' || typeof v === 'number' ? String(v) : ''
@@ -19,7 +34,7 @@ const toJSON = (body) => {
   try { return JSON.parse(body) } catch { return body }
 }
 export async function platformRequest(api, url, opts = {}) {
-  const parsed = new URL(url)
+  const parsed = parseEndpoint(url)
   if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['127.0.0.1','localhost'].includes(parsed.hostname))) {
     throw new Error('仅支持 HTTPS 请求')
   }
@@ -29,7 +44,7 @@ export async function platformRequest(api, url, opts = {}) {
     'c6.y.qq.com','open.weixin.qq.com','lp.open.weixin.qq.com',
     'gateway.kugou.com','login-user.kugou.com','loginserviceretry.kugou.com']
   if (!allowed.includes(host) && !opts.externalDav) throw new Error('不支持的音乐平台地址')
-  if (opts.externalDav && parsed.username) throw new Error('WebDAV 地址不能包含账号密码')
+  if (opts.externalDav && parsed.authority.includes('@')) throw new Error('WebDAV 地址不能包含账号密码')
   let resp
   try {
     const { externalDav: _, ...requestOptions } = opts

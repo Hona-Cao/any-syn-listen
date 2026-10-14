@@ -23,7 +23,7 @@ function harness(){
 }
 test('native manifest declares settings with the official CheckboxMultiple and command schema',async()=>{
  const manifest=JSON.parse(await fs.readFile('dist/manifest.json','utf8'))
- assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.0')
+ assert.equal(manifest.id,'hona-account-sync');assert.equal(manifest.version,'0.3.1')
  const settings=manifest.contributes.settings
  assert.ok(settings.some(x=>x.type==='configCheckboxMultiple'&&x.actionCommands.includes('loginNetease')))
  assert.equal(settings.some(x=>x.field==='selectedPlaylists'),false)

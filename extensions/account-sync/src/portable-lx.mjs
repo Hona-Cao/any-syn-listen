@@ -1,4 +1,4 @@
-import {platformRequest, basicAuthorization, sha256, asObject, stringOf} from './portable-utils.mjs'
+import {platformRequest, basicAuthorization, sha256, asObject, stringOf, parseEndpoint} from './portable-utils.mjs'
 const sources=/^[a-z][a-z0-9_-]{0,30}$/i
 export const convertLX = (s) => {
   if(!s||!s.id||!s.name||s.source==='local')return null
@@ -38,8 +38,8 @@ export function parseLX(raw) {
   return result
 }
 export const validateDAV = (cfg) => {
-  const u=new URL(cfg.url)
-  if(u.protocol!=='https:'||u.username||u.password||!cfg.username||!cfg.password)throw new Error('请填写 HTTPS WebDAV 地址与账号')
+  const u=parseEndpoint(cfg.url)
+  if(u.protocol!=='https:'||u.authority.includes('@')||!cfg.username||!cfg.password)throw new Error('请填写 HTTPS WebDAV 地址与账号')
   if(!/^\/?[-\w/ .]*$/.test(cfg.folder??'/LX_Music'))throw new Error('WebDAV 歌单目录格式错误')
 }
 export async function readLX(api, cfg) {

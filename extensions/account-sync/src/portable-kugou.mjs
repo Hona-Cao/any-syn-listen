@@ -1,5 +1,5 @@
 import CryptoJS from 'crypto-js'
-import {platformRequest, asObject, stringOf, songDuration, md5} from './portable-utils.mjs'
+import {platformRequest, asObject, stringOf, songDuration, md5, encodeQuery} from './portable-utils.mjs'
 const kgKey='OIlwieks28dk2k092lksi2UIkp'
 const kgLoginKey='NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt'
 const pub='-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDIAG7QOELSYoIJvTFJhMpe1s/gbjDJX51HBNnEl5HXqTW6lQ7LC8jr9fWZTwusknp+sVGzwd40MwP6U5yDE27M/X1+UR4tvOGOqp94TJtQ1EPnWGWXngpeIW5GxoQGao1rmYWAu6oi1z9XkChrsUdC6DJE5E221wf/4WLFxwAtRQIDAQAB\n-----END PUBLIC KEY-----'
@@ -41,7 +41,7 @@ export class KugouAccount {
     const signature=await md5(this.api,salt+
       Object.keys(payload).sort().map(k=>k+'='+value(payload[k])).join('')+json+salt)
     const url=(options.baseUrl??(login?'https://login-user.kugou.com':'https://gateway.kugou.com'))+
-      route+'?'+new URLSearchParams({...Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,value(v)])),signature}).toString()
+      route+'?'+encodeQuery({...Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,value(v)])),signature})
     const {body:resp}=await platformRequest(this.api,url,{
       method:body?'POST':'GET',
       headers:{

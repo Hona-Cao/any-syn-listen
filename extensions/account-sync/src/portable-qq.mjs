@@ -1,4 +1,4 @@
-import {platformRequest,asObject,stringOf,songDuration,wait} from './portable-utils.mjs'
+import {platformRequest,asObject,stringOf,songDuration,wait,encodeQuery} from './portable-utils.mjs'
 
 const endpoint='https://u.y.qq.com/cgi-bin/musicu.fcg'
 const wxAppId='wx48db31d50e334801'
@@ -52,14 +52,15 @@ export class QQAccount {
     return result.data
   }
   async loginWX(){
-    const qrURL = new URL('https://open.weixin.qq.com/connect/qrconnect')
-    Object.entries({
+    const qrURL = 'https://open.weixin.qq.com/connect/qrconnect?'
+    const qrParams = {
       appid:wxAppId,
       redirect_uri:'https://y.qq.com/portal/wx_redirect.html?login_type=2&surl=https://y.qq.com/',
       response_type:'code',scope:'snsapi_login',state:'STATE',
       href:'https://y.qq.com/mediastyle/music_v17/src/css/popup_wechat.css#wechat_redirect'
-    }).forEach(([k,v])=>qrURL.searchParams.set(k,v))
-    const page=await platformRequest(this.api,qrURL.toString(),{method:'GET'})
+    }
+    const qrLink = qrURL+encodeQuery(qrParams)
+    const page=await platformRequest(this.api,qrLink,{method:'GET'})
     const html=typeof page.body==='string'?page.body:''
     const uuid=/uuid=([^"&\s]+)/.exec(html)?.[1]
     if(!uuid||!/^[a-zA-Z0-9_@+=-]{10,200}$/.test(uuid))

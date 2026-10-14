@@ -176,3 +176,37 @@ test('LX N WebDAV uses extension-native HTTPS request and keeps source playlists
   assert.equal(data.lists[2].name,'LX N·常听')
   assert.equal(data.lists[2].list[0].meta.musicId,'22')
 })
+
+test('AnyListen isolate has no global URL or URLSearchParams',async()=>{
+  const prevURL=globalThis.URL
+  const prevSearch=globalThis.URLSearchParams
+  globalThis.URL=undefined
+  globalThis.URLSearchParams=undefined
+  try{
+    const h=makeApi((url,opts)=>{
+      if(String(url).includes('/connect/qrconnect'))return reply('<html>uuid=qr_isolate_mock_123456789"</html>')
+      if(String(url).includes('/connect/l/qrconnect'))
+        return reply("window.wx_errcode=200;window.wx_code='wechat-isolate-demo'")
+      if(String(url).startsWith('https://u.y.qq.com/')){
+        return reply({code:0,'music.login.LoginServer':{code:0,
+          data:{musicid:'12345678',musickey:'W_Xtest-key'}}})
+      }
+      throw Error('Unexpected URL in isolate test: '+url)
+    })
+    const qq=new QQAccount(h.api)
+    const cred=await qq.loginWX()
+    assert.equal(cred.musicId,'12345678')
+    const kg=new KugouAccount(h.api)
+    assert.ok(typeof kg.request==='function')
+    // WebDAV validation must never evaluate the missing URL constructor.
+    const v=await readLX(makeApi((_url,options)=>reply(JSON.stringify({
+      version:'2',data:{defaultList:[],loveList:[],userList:[]}
+    }))).api,{
+      url:'https://dav.example.org/dav',username:'user',password:'pw',folder:'/LX_Music'
+    })
+    assert.equal(v.lists.length,2)
+  }finally{
+    globalThis.URL=prevURL
+    globalThis.URLSearchParams=prevSearch
+  }
+})
