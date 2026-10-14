@@ -1,9 +1,12 @@
 name: Windows portable experimental build (no Codex)
 
 on:
-  pull_request:
+  push:
+    branches:
+      - feat/lx-webdav-cloud-playlists
     paths:
       - '.github/workflows/windows-portable.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
