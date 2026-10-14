@@ -1,6 +1,9 @@
 import { showFileSaveModal, showFileSelectModal } from '../fs/fileSelectModal'
 import { ipc } from '../ipc'
 
+export const loginQQMusicInWindow = async (): Promise<boolean> => ipc.loginQQMusicInWindow()
+export const loginKugouInWindow = async (): Promise<boolean> => ipc.loginKugouInWindow()
+
 export const loginNeteaseInWindow = async (): Promise<boolean> => {
   return ipc.loginNeteaseInWindow()
 }
