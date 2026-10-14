@@ -23,6 +23,8 @@ export declare type ServerCommonActions = WarpPromiseRecord<{
 
   /** Open a sandboxed official NetEase login page and capture session in main process. */
   loginNeteaseInWindow: () => boolean
+  loginQQMusicInWindow: () => boolean
+  loginKugouInWindow: () => boolean
 
   /** 获取应用信息 */
   getAppInfo: () => { machineId: string; proxyServerHost: string }
