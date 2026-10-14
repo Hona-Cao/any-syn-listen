@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '@/plugins/i18n'
-  import { loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
+  import { loginQQMusicInWindow, requestMusicSMSCode, loginMusicWithSMSCode } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
@@ -48,6 +48,11 @@
   let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
   let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
   let neteaseLoginMessage = $state('')
+  let smsPlatform = $state<'netease' | 'kugou' | null>(null)
+  let smsPhone = $state('')
+  let smsCode = $state('')
+  let smsBusy = $state(false)
+  let smsStatus = $state('')
   let qqEnable = $state(settingState.setting['sync.qq.enable'])
   let qqMessage = $state('')
   let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
@@ -174,7 +179,7 @@
     </div>
     <div class="gap-top">
       <Checkbox
-        label="同步 LX N Music 歌单（只读导入，单独创建镜像）"
+        label="LX N 歌单同步"
         id="sync.lxWebdav.enable"
         checked={lxEnable}
         onchange={(val) => {
@@ -188,115 +193,123 @@
         <Input
           id="sync.lxWebdav.path"
           class="input-url"
-          placeholder="LX N Music 目录，例如 /LX_Music/"
+          placeholder="LX N 目录 /LX_Music/"
           value={lxPath}
           onchange={(val) => { lxPath = val }}
           onblur={() => { void updateSetting({ 'sync.lxWebdav.path': lxPath }) }}
         />
-        <p class="small">使用上方 WebDAV 服务器和凭据；每 3 分钟检查一次 playlists.json。此功能不会覆盖 AnyListen 原有列表。</p>
       </div>
     {/if}
-    <div class="gap-top">
-      <Checkbox
-        label="网易云账号歌单与每日推荐（只读同步）"
-        id="sync.netease.enable"
-        checked={neteaseEnable}
-        onchange={(val) => {
-          neteaseEnable = val
-          void updateSetting({ 'sync.netease.enable': val })
-        }}
-      />
-    </div>
     {#if import.meta.env.VITE_IS_DESKTOP}
       <div class="gap-top">
-        <Btn
-          onclick={async () => {
-            neteaseLoginMessage = ''
-            try {
-              const success = await loginNeteaseInWindow()
-              neteaseLoginMessage = success
-                ? '登录成功。凭据已在本机加密保存，将按低频率自动检查及续期。'
-                : '已关闭登录窗口，没有更改原来的登录状态。'
-              if (success) {
-                neteaseEnable = true
-                neteaseCookie = ''
-              }
-            } catch (err) {
-              neteaseLoginMessage = (err as Error).message
+        <Btn onclick={() => {
+          smsPlatform = smsPlatform === 'netease' ? null : 'netease'
+          smsStatus = ''
+          smsPhone = ''
+          smsCode = ''
+        }}>网易云账号登录</Btn>
+        <Btn onclick={async () => {
+          qqMessage = ''
+          try {
+            if (await loginQQMusicInWindow()) {
+              qqEnable = true
+              qqMessage = '登录成功'
             }
-          }}
-        >打开网易云官方登录页面（自动获取 Cookie）</Btn>
+          } catch (error) {
+            qqMessage = (error as Error).message
+          }
+        }}>QQ 音乐账号登录</Btn>
+        <Btn onclick={() => {
+          smsPlatform = smsPlatform === 'kugou' ? null : 'kugou'
+          smsStatus = ''
+          smsPhone = ''
+          smsCode = ''
+        }}>酷狗账号登录</Btn>
       </div>
-      {#if neteaseLoginMessage}
-        <p class="small">{neteaseLoginMessage}</p>
+      {#if qqMessage}<p class="small">{qqMessage}</p>{/if}
+      {#if neteaseLoginMessage}<p class="small">{neteaseLoginMessage}</p>{/if}
+      {#if kugouMessage}<p class="small">{kugouMessage}</p>{/if}
+      {#if smsPlatform}
+        <div class="gap-top">
+          <Input
+            type="tel"
+            placeholder="手机号"
+            value={smsPhone}
+            onchange={(value) => { smsPhone = value }}
+          />
+          <Btn
+            disabled={smsBusy || !/^1\d{10}$/.test(smsPhone)}
+            onclick={async () => {
+              if (!smsPlatform) return
+              smsBusy = true
+              smsStatus = ''
+              try {
+                await requestMusicSMSCode(smsPlatform, smsPhone)
+                smsStatus = '验证码已发送'
+              } catch (err) {
+                smsStatus = (err as Error).message
+              } finally {
+                smsBusy = false
+              }
+            }}
+          >获取验证码</Btn>
+        </div>
+        <div class="gap-top">
+          <Input
+            placeholder="验证码"
+            value={smsCode}
+            onchange={(value) => { smsCode = value }}
+          />
+          <Btn
+            disabled={smsBusy || !/^\d{4,8}$/.test(smsCode)}
+            onclick={async () => {
+              if (!smsPlatform) return
+              smsBusy = true
+              smsStatus = ''
+              try {
+                const platform = smsPlatform
+                const success = await loginMusicWithSMSCode(platform, smsPhone, smsCode)
+                if (success) {
+                  if (platform === 'netease') neteaseEnable = true
+                  if (platform === 'kugou') kugouEnable = true
+                  smsCode = ''
+                  smsPlatform = null
+                  neteaseLoginMessage = platform === 'netease' ? '登录成功' : ''
+                  kugouMessage = platform === 'kugou' ? '登录成功' : ''
+                }
+              } catch (err) {
+                smsStatus = (err as Error).message
+              } finally {
+                smsBusy = false
+              }
+            }}
+          >登录</Btn>
+        </div>
+        {#if smsStatus}<p class="small">{smsStatus}</p>{/if}
       {/if}
-    {/if}
-    {#if neteaseEnable}
+    {:else}
       <div class="gap-top">
+        <Checkbox
+          label="网易云歌单同步"
+          id="sync.netease.enable"
+          checked={neteaseEnable}
+          onchange={(val) => {
+            neteaseEnable = val
+            void updateSetting({ 'sync.netease.enable': val })
+          }}
+        />
+      </div>
+      {#if neteaseEnable}
         <Input
           id="sync.netease.cookie"
           class="input-url"
           type="password"
-          placeholder="手动 Cookie（可选：系统加密存储不可用时备用）"
+          placeholder="网易云 Cookie"
           value={neteaseCookie}
           onchange={(val) => { neteaseCookie = val }}
           onblur={() => { void updateSetting({ 'sync.netease.cookie': neteaseCookie }) }}
         />
-        <p class="small">手动输入的 Cookie 将保存在本机应用配置中（未额外加密）。桌面端建议使用上方的官方登录窗口。自动同步账号歌单约每三小时一次，续期最多每十八小时尝试一次；不保证永不过期。</p>
-      </div>
-    {/if}
-    {#if import.meta.env.VITE_IS_DESKTOP}
-      <div class="gap-top">
-        <Checkbox
-          id="sync.qq.enable"
-          label="同步 QQ 音乐账号的歌单和我喜欢（只读镜像）"
-          checked={qqEnable}
-          onchange={(value) => {
-            qqEnable = value
-            void updateSetting({ 'sync.qq.enable': value })
-          }}
-        />
-      </div>
-      <div class="gap-top">
-        <Btn onclick={async () => {
-          qqMessage = ''
-          try {
-            const ok = await loginQQMusicInWindow()
-            qqMessage = ok ? 'QQ 音乐已授权，登录信息已加密保存。' : '已关闭登录窗口，原有登录状态未改变。'
-            if (ok) qqEnable = true
-          } catch (error) {
-            qqMessage = (error as Error).message
-          }
-        }}>打开 QQ 音乐官方登录窗口</Btn>
-      </div>
-      {#if qqMessage}<p class="small">{qqMessage}</p>{/if}
-      <div class="gap-top">
-        <Checkbox
-          id="sync.kugou.enable"
-          label="同步酷狗音乐账号歌单（只读镜像）"
-          checked={kugouEnable}
-          onchange={(value) => {
-            kugouEnable = value
-            void updateSetting({ 'sync.kugou.enable': value })
-          }}
-        />
-      </div>
-      <div class="gap-top">
-        <Btn onclick={async () => {
-          kugouMessage = ''
-          try {
-            const ok = await loginKugouInWindow()
-            kugouMessage = ok ? '酷狗音乐扫码授权完成，登录信息已加密保存。' : '扫码已取消或超时。'
-            if (ok) kugouEnable = true
-          } catch (error) {
-            kugouMessage = (error as Error).message
-          }
-        }}>酷狗音乐扫码登录（原生接口）</Btn>
-      </div>
-      {#if kugouMessage}<p class="small">{kugouMessage}</p>{/if}
-      <p class="small">QQ/酷狗登录信息由系统安全存储加密。登录失效需要重新授权，当前暂不保证 QQ/酷狗凭据自动刷新；不会因此删除现有镜像。</p>
-    {:else}
-      <p class="small">QQ 音乐及酷狗音乐账号登录目前仅支持桌面客户端，Web 服务暂不提供账户凭据管理。</p>
+      {/if}
     {/if}
     <div class="gap-top">
       <Btn disabled={disabledSyncBtn} onclick={runSync}>{$t('settings.dataSync.webdav_sync')}</Btn>
