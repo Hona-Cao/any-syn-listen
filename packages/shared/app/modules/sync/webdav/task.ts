@@ -129,9 +129,8 @@ const syncNeteaseIfDue = async () => {
   }
 }
 const handleSync = async () => {
-  const current = getSyncWebDAVState()
-  if (current.status !== 'idle' && current.status !== 'error') return
   const settings = getSettings()
+  // Cloud account imports run independently from the native WebDAV lock state.
   await Promise.all([syncNeteaseIfDue(), syncOtherMusicIfDue()])
   if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
     await syncLXWebDAV({
@@ -143,6 +142,8 @@ const handleSync = async () => {
       console.warn('[LX N WebDAV] Failed to read remote playlist:', err.message)
     })
   }
+  const current = getSyncWebDAVState()
+  if (current.status !== 'idle' && current.status !== 'error') return
   if (
     settings['sync.webdav.enable'] &&
     !!settings['sync.webdav.url'] &&
