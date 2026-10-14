@@ -130,6 +130,8 @@ const defaultSetting: AnyListen.AppSetting = {
   'sync.lxWebdav.path': '/LX_Music/',
   'sync.netease.enable': false,
   'sync.netease.cookie': '',
+  'sync.qq.enable': false,
+  'sync.kugou.enable': false,
 
   'backup.backupPath': '',
 
