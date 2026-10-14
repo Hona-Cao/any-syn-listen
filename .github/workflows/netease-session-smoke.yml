@@ -8,6 +8,8 @@ on:
     paths:
       - 'packages/shared/app/modules/sync/external/neteaseSession.ts'
       - 'tests/netease-session.test.mjs'
+      - 'tests/lx-convert.test.mjs'
+      - 'packages/shared/app/modules/sync/external/lxConvert.ts'
       - '.github/workflows/netease-session-smoke.yml'
 
 jobs:
@@ -19,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Test cookie parsing, renewal and error handling (mocked HTTP only)
-        run: node --experimental-strip-types --test tests/netease-session.test.mjs
+        run: node --experimental-strip-types --test tests/*.test.mjs
