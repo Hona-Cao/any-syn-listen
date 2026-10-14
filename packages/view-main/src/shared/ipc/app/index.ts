@@ -1,6 +1,10 @@
 import { showFileSaveModal, showFileSelectModal } from '../fs/fileSelectModal'
 import { ipc } from '../ipc'
 
+export const loginNeteaseInWindow = async (): Promise<boolean> => {
+  return ipc.loginNeteaseInWindow()
+}
+
 export const getAppInfo: AnyListen.IPC.ServerIPC['getAppInfo'] = async () => {
   return ipc.getAppInfo()
 }
