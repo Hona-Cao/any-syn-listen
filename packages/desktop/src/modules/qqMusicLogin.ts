@@ -10,7 +10,7 @@ export const QQ_AUTH_PARTITION = 'persist:qqmusic-auth'
 
 /** Read QQ Music's *own* cookies from Electron's isolated Chromium session. */
 const parseCredential = (cookies: Electron.Cookie[]): QQMusicCredential | null => {
-  const relevant = cookies.filter((item) => item.domain === 'qq.com' || item.domain.endsWith('.qq.com'))
+  const relevant = cookies.filter((item) => item.domain === 'qq.com' || item.domain?.endsWith('.qq.com'))
   const values = new Map(relevant.map((item) => [item.name, item.value]))
   const musicKey = values.get('qqmusic_key') || values.get('qm_keyst') || ''
   const rawId = values.get('musicid') || values.get('qqmusic_uin') || values.get('wxuin') || values.get('uin') || ''
