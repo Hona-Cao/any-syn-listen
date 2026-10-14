@@ -3,6 +3,8 @@ import { ipc } from '../ipc'
 
 export const loginQQMusicInWindow = async (): Promise<boolean> => ipc.loginQQMusicInWindow()
 export const loginKugouInWindow = async (): Promise<boolean> => ipc.loginKugouInWindow()
+export const requestMusicSMSCode = (platform: 'netease' | 'kugou', phone: string) => ipc.requestMusicSMSCode(platform, phone)
+export const loginMusicWithSMSCode = (platform: 'netease' | 'kugou', phone: string, code: string) => ipc.loginMusicWithSMSCode(platform, phone, code)
 
 export const loginNeteaseInWindow = async (): Promise<boolean> => {
   return ipc.loginNeteaseInWindow()
