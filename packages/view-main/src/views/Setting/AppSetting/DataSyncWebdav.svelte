@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '@/plugins/i18n'
+  import { loginNeteaseInWindow } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
@@ -46,6 +47,7 @@
   let enableDislike = $state(settingState.setting['sync.webdav.syncEnable.dislike'])
   let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
   let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
+  let neteaseLoginMessage = $state('')
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
@@ -201,18 +203,42 @@
         }}
       />
     </div>
+    {#if import.meta.env.VITE_IS_DESKTOP}
+      <div class="gap-top">
+        <Btn
+          onclick={async () => {
+            neteaseLoginMessage = ''
+            try {
+              const success = await loginNeteaseInWindow()
+              neteaseLoginMessage = success
+                ? '登录成功。凭据已在本机加密保存，将按低频率自动检查及续期。'
+                : '已关闭登录窗口，没有更改原来的登录状态。'
+              if (success) {
+                neteaseEnable = true
+                neteaseCookie = ''
+              }
+            } catch (err) {
+              neteaseLoginMessage = (err as Error).message
+            }
+          }}
+        >打开网易云官方登录页面（自动获取 Cookie）</Btn>
+      </div>
+      {#if neteaseLoginMessage}
+        <p class="small">{neteaseLoginMessage}</p>
+      {/if}
+    {/if}
     {#if neteaseEnable}
       <div class="gap-top">
         <Input
           id="sync.netease.cookie"
           class="input-url"
           type="password"
-          placeholder="网易云 Cookie（至少包含 MUSIC_U）"
+          placeholder="手动 Cookie（可选：系统加密存储不可用时备用）"
           value={neteaseCookie}
           onchange={(val) => { neteaseCookie = val }}
           onblur={() => { void updateSetting({ 'sync.netease.cookie': neteaseCookie }) }}
         />
-        <p class="small">登录凭据只保存于当前应用配置，不会写入 WebDAV 歌单文件。请勿分享 Cookie。</p>
+        <p class="small">手动输入的 Cookie 将保存在本机应用配置中（未额外加密）。桌面端建议使用上方的官方登录窗口。自动同步账号歌单约每三小时一次，续期最多每十八小时尝试一次；不保证永不过期。</p>
       </div>
     {/if}
     <div class="gap-top">
