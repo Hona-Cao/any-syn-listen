@@ -616,6 +616,8 @@ declare global {
       'sync.lxWebdav.path': string
       'sync.netease.enable': boolean
       'sync.netease.cookie': string
+      'sync.qq.enable': boolean
+      'sync.kugou.enable': boolean
 
       /** 备份路径 */
       'backup.backupPath': string
