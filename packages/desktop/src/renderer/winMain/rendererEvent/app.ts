@@ -9,6 +9,7 @@ import { executeCommand } from '@/modules/command'
 import { openNeteaseLoginWindow } from '@/modules/neteaseLogin'
 import { openQQMusicLoginWindow } from '@/modules/qqMusicLogin'
 import { openKugouLoginWindow } from '@/modules/kugouLogin'
+import { requestMusicSMSCode, loginMusicWithSMSCode } from '@/modules/musicPhoneAuth'
 import { clipboardReadText, clipboardWriteText, exitApp, openDirInExplorer, openUrl } from '@/shared/electron'
 import { getFonts } from '@/shared/fontManage'
 import { workers } from '@/worker'
@@ -38,6 +39,12 @@ export const createExposeApp = () => {
     },
     async loginKugouInWindow() {
       return openKugouLoginWindow()
+    },
+    async requestMusicSMSCode(_event, platform, phone) {
+      return requestMusicSMSCode(platform, phone)
+    },
+    async loginMusicWithSMSCode(_event, platform, phone, code) {
+      return loginMusicWithSMSCode(platform, phone, code)
     },
     async getAppInfo(event) {
       return {
