@@ -1,0 +1,28 @@
+name: Desktop bundle smoke build (no Codex)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - '.github/workflows/desktop-build-smoke.yml'
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Bundle renderer, preload, workers and main application
+        run: pnpm -F @shared/scripts build:desktop
+      - name: Verify expected bundles exist
+        run: |
+          test -f packages/desktop/dist/electron/main.js
+          test -f packages/desktop/dist/view-main/index.html
+          test -f packages/desktop/dist/electron/view-main.preload.js
