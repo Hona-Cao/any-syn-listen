@@ -1,4 +1,4 @@
-import { applyExternalMirrors, type MirrorPlaylist } from './mirror'
+import type { MirrorPlaylist } from './mirror'
 import { getNeteaseAccountId, requestNetease } from './neteaseSession'
 
 const post = async <T extends { code: number; message?: string }>(route: string, cookie: string, body: object): Promise<T> => {
@@ -24,7 +24,7 @@ const convert = (s: Song): AnyListen.Music.MusicInfoOnline => ({
   },
 })
 /** Account and daily recommendation read-only mirrors; never write back to NetEase. */
-export const syncNeteaseAccount = async (cookie: string) => {
+export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid: number; lists: MirrorPlaylist[] }> => {
   if (!/(?:^|;\s*)MUSIC_U=/.test(cookie)) throw new Error('NetEase MUSIC_U cookie required')
   const uid = await getNeteaseAccountId(cookie)
   const playlists: Array<{ id: number; name: string }> = []
@@ -54,12 +54,16 @@ export const syncNeteaseAccount = async (cookie: string) => {
       const data = await post<{ code: number; songs: Song[] }>(
         'v3/song/detail', cookie, { c: JSON.stringify(batch.map((id) => ({ id }))) }
       )
+      if (!Array.isArray(data.songs) || data.songs.length < batch.length) {
+        throw new Error('NetEase song details incomplete; preserve existing mirror')
+      }
       const map = new Map(data.songs.map((s) => [s.id, s]))
       for (const id of batch) {
         const s = map.get(id)
         if (s) songs.push(convert(s))
       }
     }
+    if (songs.length !== ids.length) throw new Error('NetEase song list contains missing tracks')
     mirrors.push({ key: 'playlist:' + item.id, name: '网易云 · ' + item.name, list: songs })
   }
   const daily = await post<{ code: number; data?: { dailySongs?: Song[] } }>(
@@ -68,5 +72,10 @@ export const syncNeteaseAccount = async (cookie: string) => {
   if (daily.data?.dailySongs) {
     mirrors.push({ key: 'daily', name: '网易云 · 每日推荐', list: daily.data.dailySongs.map(convert) })
   }
-  return applyExternalMirrors('netease:' + uid, mirrors)
+  return { uid, lists: mirrors }
+}
+export const syncNeteaseAccount = async (cookie: string) => {
+  const { uid, lists } = await readNeteaseAccountPlaylists(cookie)
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('netease:' + uid, lists)
 }
