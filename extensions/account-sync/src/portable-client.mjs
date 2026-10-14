@@ -89,6 +89,10 @@ export class PortableClient {
       if(!credential)return false
       await provider.validate(credential)
       this.credentials.qqmusic=credential
+    }else if(platform==='netease'){
+      const credential=await provider.loginQR(onStatus)
+      if(!credential)return false
+      this.credentials.netease=credential.cookie
     }else {
       const title=sourceNames[platform]+'账号登录'
       const phone=await this.api.app.showInputDialog({title,placeholder:'手机号',
