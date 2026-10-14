@@ -29,7 +29,7 @@ test('NetEase SMS auth sends OTP once and stores only returned session cookie', 
   await assert.rejects(sendNeteasePhoneCode(phone), /请稍后/)
   const cookie = await loginNeteaseWithPhoneCode(phone, '123456')
   assert.match(cookie, /MUSIC_U=verified-test-session/)
-  assert.deepEqual(paths, ['/weapi/captcha/sent', '/weapi/login/cellphone', '/weapi/nuser/account/get'])
+  assert.deepEqual(paths, ['/weapi/sms/captcha/sent', '/weapi/login/cellphone', '/weapi/nuser/account/get'])
 })
 
 test('Kugou OTP requests HTTPS and never puts verification codes in URL', async (t) => {

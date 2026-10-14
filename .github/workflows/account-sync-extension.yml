@@ -1,0 +1,38 @@
+name: Account sync extension
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/standalone-account-sync]
+    paths: [extensions/account-sync/**, .github/workflows/account-sync-extension.yml]
+permissions:
+  contents: read
+concurrency:
+  group: account-sync-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extensions/account-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build:helper
+      - run: node scripts/signing-key.mjs
+      - run: npm run build:extension
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: account-sync-extension-and-helper
+          path: |
+            extensions/account-sync/releases/*.alix
+            extensions/account-sync/helper-dist/**
+            extensions/account-sync/README.md
+            extensions/account-sync/SOURCES.md
+            extensions/account-sync/LICENSE
+          retention-days: 14

@@ -1,0 +1,6 @@
+{
+  "name": "anylisten-account-helper",
+  "productName": "AnyListen 账号助手",
+  "version": "0.1.0",
+  "main": "main.cjs"
+}
