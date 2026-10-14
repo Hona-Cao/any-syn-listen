@@ -68,9 +68,16 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
     let finished = false
     let verifying = false
     let lastAttempt = 0
+    const poll = setInterval(() => { void verify() }, 5000)
+    // The URL is a mobile login page. Use a consistent mobile UA rather
+    // than changing it on each request (which can shorten the session).
+    win.webContents.setUserAgent(
+      'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+    )
     const finish = (ok: boolean) => {
       if (finished) return
       finished = true
+      clearInterval(poll)
       authSession.cookies.removeListener('changed', onCookiesChanged)
       if (!win.isDestroyed()) win.close()
       resolve(ok)
@@ -108,6 +115,7 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
     void win.loadURL('https://music.163.com/m/login').catch((err: Error) => {
       if (finished) return
       finished = true
+      clearInterval(poll)
       authSession.cookies.removeListener('changed', onCookiesChanged)
       reject(new Error('无法打开网易云官方登录网页：' + err.message))
       if (!win.isDestroyed()) win.close()
