@@ -66,9 +66,9 @@ export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid
     }
     if (songs.length !== ids.length) throw new Error('NetEase song list contains missing tracks')
     const loved = item.specialType === 5 || /喜欢的音乐$/.test(item.name)
-    mirrors.push({ key: loved ? 'love' : 'playlist:' + item.id, name: loved ? '网易云·我喜欢' : '网易云·' + item.name, list: songs })
+    mirrors.push({ key: 'playlist:' + item.id, name: loved ? '网易云·我喜欢' : '网易云·' + item.name, list: songs })
   }
-  if (!mirrors.some((item) => item.key === 'love')) {
+  if (!mirrors.some((item) => item.name === '网易云·我喜欢')) {
     try {
       const liked = await post<{ code: number; ids?: number[] }>('song/like/get', cookie, { uid: String(uid) })
       if (Array.isArray(liked.ids)) {
