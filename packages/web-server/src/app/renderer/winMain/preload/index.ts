@@ -29,6 +29,8 @@ export type ExposeServerFunctions = Omit<
   | 'minWindow'
   | 'fullscreenWindow'
   | 'loginNeteaseInWindow'
+  | 'loginQQMusicInWindow'
+  | 'loginKugouInWindow'
 >
 export type ClientCall = AnyListen.IPC.ClientIPC
 
