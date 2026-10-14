@@ -1,42 +1,14 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-
 import { getNeteaseAccountId, runWebDAVSyncTask } from '@any-listen/app/modules/sync'
-import { BrowserWindow, safeStorage, session } from 'electron'
+import { BrowserWindow, session } from 'electron'
 
-import { appState, updateSetting } from '@/app'
+import { updateSetting } from '@/app'
+
+import { accountVaultAvailable, readAccountSecret, writeAccountSecret } from './accountVault'
 
 export const NETEASE_AUTH_PARTITION = 'persist:netease-auth'
-const cookieFile = () => path.join(appState.dataPath, 'secrets', 'netease-session.bin')
-const secureAvailable = () =>
-  safeStorage.isEncryptionAvailable() &&
-  (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
-
-/** Keep raw credentials out of settings.json, WebDAV snapshots and the renderer. */
-export const readSecureNeteaseCookie = async (): Promise<string> => {
-  if (!secureAvailable()) return ''
-  let ciphertext: Buffer
-  try {
-    ciphertext = await readFile(cookieFile())
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ''
-    throw err
-  }
-  try {
-    return safeStorage.decryptString(ciphertext)
-  } catch {
-    // Never remove a credential merely because the OS keychain is unavailable.
-    return ''
-  }
-}
-export const writeSecureNeteaseCookie = async (cookie: string): Promise<void> => {
-  if (!secureAvailable()) throw new Error('系统安全凭据存储不可用；请解锁系统钥匙串后重试')
-  const filename = cookieFile()
-  await mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
-  const tmp = filename + '.tmp'
-  await writeFile(tmp, safeStorage.encryptString(cookie), { mode: 0o600 })
-  await rename(tmp, filename)
-}
+export const readSecureNeteaseCookie = () => readAccountSecret('netease')
+export const writeSecureNeteaseCookie = (cookie: string) => writeAccountSecret('netease', cookie)
+const secureAvailable = accountVaultAvailable
 
 let pendingLogin: Promise<boolean> | undefined
 
