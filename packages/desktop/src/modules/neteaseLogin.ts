@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getNeteaseAccountId } from '@any-listen/app/modules/sync'
+import { getNeteaseAccountId, runWebDAVSyncTask } from '@any-listen/app/modules/sync'
 import { BrowserWindow, safeStorage, session } from 'electron'
 
 import { appState, updateSetting } from '@/app'
@@ -94,6 +94,7 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
         await writeSecureNeteaseCookie(cookie)
         // Remove any legacy plaintext credential after obtaining the secure one.
         updateSetting({ 'sync.netease.cookie': '', 'sync.netease.enable': true })
+        runWebDAVSyncTask(true)
         finish(true)
       } catch {
         // The official login flow might still be completing a challenge.
