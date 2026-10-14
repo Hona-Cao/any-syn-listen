@@ -234,7 +234,7 @@
           <Input
             type="tel"
             placeholder="手机号"
-            value={smsPhone}
+            bind:value={smsPhone}
             onchange={(value) => { smsPhone = value }}
           />
           <Btn
@@ -257,7 +257,7 @@
         <div class="gap-top">
           <Input
             placeholder="验证码"
-            value={smsCode}
+            bind:value={smsCode}
             onchange={(value) => { smsCode = value }}
           />
           <Btn
