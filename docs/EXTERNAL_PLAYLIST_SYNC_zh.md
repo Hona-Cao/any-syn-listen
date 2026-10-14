@@ -32,3 +32,32 @@
 - `packages/shared/app/modules/sync/external/lxWebdav.ts`：只读 WebDAV 下载。
 - `packages/shared/app/modules/sync/external/netease.ts`：网易云账号 / 每日推荐。
 - `packages/shared/app/modules/sync/external/mirror.ts`：幂等镜像管理。
+
+
+## 网易云登录与长效会话（实验性）
+
+桌面版在设置页点击“打开网易云官方登录页面”，在独立、启用 sandbox 的窗口中通过官方页面使用手机或扫码登录。主进程读取该域名的 HttpOnly Cookie，验证账号后保存到系统安全存储加密的本机凭据文件；不注入 JavaScript，不触碰账号密码和短信验证码，也不把 Cookie 写入歌单快照或 Git。
+
+Windows / macOS 依赖 Electron safeStorage 与 OS 钥匙串；Linux 若只提供不安全的 basic_text 后端，则不自动保存登录结果，需使用手动 Cookie 模式。手动 Cookie 仍保存在本机应用设置中（未额外加密），仅供可信环境使用。Web 服务仍保留手动模式。
+
+网易云歌单同步：最多每 3 小时一次。登录刷新：最多每 18 小时尝试一次，失败后不高速重试；每次成功续期都合并服务器 Set-Cookie 并验证账户。某些登录方式（尤其二维码获得的会话）可能不支持自动刷新；服务器要求重新认证时，用户必须通过官方页面重新登录。无法保证永久有效。
+
+### QQ、酷狗登录态的续期方向
+
+| 平台 | 需要保留的凭据 | 参考刷新方式 |
+| --- | --- | --- |
+| 网易云音乐 | MUSIC_U、__csrf 等 Cookie | WEAPI login/token/refresh，验证后更新 Set-Cookie |
+| QQ 音乐 | musicid、musickey、refresh_key、refresh_token、login_type 等 | music.login.LoginServer.Login（loginMode=2），按登录类型选择参数 |
+| 酷狗音乐 | token、userid、appid、设备标识 | KuGouMusicApi 的 /login/token，同平台 token 才能刷新 |
+
+QQ 的实现参考 https://github.com/l-1124/QQMusicApi/blob/main/qqmusic_api/modules/login.py ；酷狗参考 https://github.com/MakcRe/KuGouMusicApi/blob/main/docs/README.md 。
+
+**QQ/酷狗目前是有源码依据的设计方向，不等于已完成账号适配、真实续期或实机验证。**平台仍可能因风控、账号安全、设备变化或撤销授权使刷新失败，不能靠绕过验证码实现永不过期。
+
+### 轻量单元测试
+
+PR 增加 Node 内置测试（只使用模拟 Cookie 和模拟 HTTP，没有私人账号数据），执行命令：
+
+    node --experimental-strip-types --test tests/*.test.mjs
+
+GitHub Actions 在开发分支执行这些小测试；尚未完成整仓 TypeScript 校验、安装包构建或真实账号测试，测试验证最后再做。
