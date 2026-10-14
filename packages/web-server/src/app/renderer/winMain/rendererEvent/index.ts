@@ -42,6 +42,7 @@ export type ExposeClientFunctions = Omit<
   | 'showDesktopLyric'
   | 'hideDesktopLyric'
   | 'setBackupPath'
+  | 'loginNeteaseInWindow'
 >
 
 let isInitialized = false
