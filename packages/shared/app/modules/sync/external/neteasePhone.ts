@@ -1,4 +1,4 @@
-import { getNeteaseAccountId, mergeSetCookies, requestNetease } from './neteaseSession'
+import { getNeteaseAccountId, mergeSetCookies, requestNetease } from './neteaseSession.ts'
 
 const states = new Map<string, { sentAt: number; cookie: string }>()
 const phoneOK = (phone: string) => {
