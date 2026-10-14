@@ -76,7 +76,7 @@ export const applyExternalMirrors = async (namespace: string, playlists: MirrorP
     const old = await workers.dbService.getListMusics(current.id)
     // Check more than the ids: user edits to mirrored metadata are restored.
     const signature = (list: AnyListen.Music.MusicInfo[]) =>
-      JSON.stringify(list.map((s) => [s.id, s.name, s.singer, s.interval]))
+      JSON.stringify(list.map((s) => [s.id, s.name, s.singer, s.interval, s.meta.musicId, s.meta.albumName, 'qualitys' in s.meta ? s.meta.qualitys : null, 'hash' in s.meta ? s.meta.hash : null]))
     if (signature(old) !== signature(songs)) {
       await sendMusicListAction({
         action: 'list_music_overwrite',
