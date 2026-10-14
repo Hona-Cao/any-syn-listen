@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { constants, createCipheriv, createDecipheriv, createHash, publicEncrypt, randomBytes } from 'node:crypto'
 
 import type { MirrorPlaylist } from './mirror'
 
@@ -38,7 +38,7 @@ const requestGateway = async (
   mid: string,
   params: Row,
   body?: Row,
-  options: { login?: boolean; router?: string } = {}
+  options: { login?: boolean; router?: string; baseUrl?: string } = {}
 ): Promise<Row> => {
   if (!/^\/[a-z0-9/_-]+$/i.test(path)) throw new Error('Unsafe Kugou route')
   if (!/^[a-f0-9]{32}$/i.test(mid)) throw new Error('Kugou device id invalid')
@@ -56,7 +56,7 @@ const requestGateway = async (
   const salt = login ? 'NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt' : 'OIlwieks28dk2k092lksi2UIkp'
   const signed = Object.keys(data).sort().map((key) => key + '=' + str(data[key])).join('')
   const signature = md5(salt + signed + json + salt)
-  const base = login ? 'https://login-user.kugou.com' : 'https://gateway.kugou.com'
+  const base = options.baseUrl ?? (login ? 'https://login-user.kugou.com' : 'https://gateway.kugou.com')
   const query = new URLSearchParams(Object.entries({ ...data, signature }).map(([key, value]): [string, string] => [key, str(value)]))
   let response: Response
   try {
@@ -82,6 +82,81 @@ const requestGateway = async (
     throw new Error('酷狗接口拒绝请求（可能需要重新登录）')
   }
   return asObj(result.data)
+}
+
+// Kugou's phone verification protocol, based on KuGouMusicApi's login_cellphone
+// and captcha_sent modules. The mobile number and code are never persisted.
+const kgRsaPublicKey = '-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDIAG7QOELSYoIJvTFJhMpe1s/gbjDJX51HBNnEl5HXqTW6lQ7LC8jr9fWZTwusknp+sVGzwd40MwP6U5yDE27M/X1+UR4tvOGOqp94TJtQ1EPnWGWXngpeIW5GxoQGao1rmYWAu6oi1z9XkChrsUdC6DJE5E221wf/4WLFxwAtRQIDAQAB\n-----END PUBLIC KEY-----'
+const md5Text = (text: string) => createHash('md5').update(text).digest('hex')
+const aesKey = (secret: string) => Buffer.from(md5Text(secret).slice(0, 32), 'utf8')
+const aesIv = (secret: string) => Buffer.from(md5Text(secret).slice(-16), 'utf8')
+const kgEncrypt = (text: string, secret: string): string => {
+  const cipher = createCipheriv('aes-256-cbc', aesKey(secret), aesIv(secret))
+  return Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]).toString('hex')
+}
+const kgDecrypt = (hex: string, secret: string): string => {
+  const decipher = createDecipheriv('aes-256-cbc', aesKey(secret), aesIv(secret))
+  return Buffer.concat([decipher.update(Buffer.from(hex, 'hex')), decipher.final()]).toString('utf8')
+}
+const kgRawRsa = (text: string): string => {
+  const source = Buffer.from(text, 'utf8')
+  const block = Buffer.alloc(128)
+  if (source.length > block.length) throw new Error('Kugou phone authentication payload too large')
+  source.copy(block)
+  return publicEncrypt({ key: kgRsaPublicKey, padding: constants.RSA_NO_PADDING }, block).toString('hex').toUpperCase()
+}
+const kgPhoneStates = new Map<string, { mid: string; sentAt: number; expiresAt: number }>()
+const validPhone = (phone: string) => {
+  if (!/^1\d{10}$/.test(phone)) throw new Error('手机号格式不正确')
+}
+export const sendKugouPhoneCode = async (phone: string): Promise<void> => {
+  validPhone(phone)
+  const prev = kgPhoneStates.get(phone)
+  const now = Date.now()
+  if (prev && now - prev.sentAt < 60_000) throw new Error('请稍后再获取验证码')
+  const mid = prev?.mid ?? randomBytes(16).toString('hex')
+  // Send from the application only after an explicit button click. Never use HTTP.
+  const response = await requestGateway('/v7/send_mobile_code', mid, {}, {
+    businessid: 5, mobile: phone, plat: 3,
+  }, { baseUrl: 'https://login.user.kugou.com' })
+  if (Number(response.status) === 0) throw new Error('验证码发送失败')
+  kgPhoneStates.set(phone, { mid, sentAt: now, expiresAt: now + 5 * 60_000 })
+}
+export const loginKugouWithPhoneCode = async (phone: string, code: string): Promise<KugouAccount> => {
+  validPhone(phone)
+  if (!/^\d{4,8}$/.test(code)) throw new Error('验证码格式不正确')
+  const state = kgPhoneStates.get(phone)
+  if (!state || Date.now() > state.expiresAt) throw new Error('验证码已过期，请重新获取')
+  const now = Date.now()
+  const secret = randomBytes(8).toString('hex')
+  const encrypted = kgEncrypt(JSON.stringify({ mobile: phone, code }), secret)
+  const payload = {
+    plat: 1,
+    support_multi: 1,
+    t1: 0, t2: 0, t3: 'MCwwLDAsMCwwLDAsMCwwLDA=',
+    clienttime_ms: now,
+    mobile: phone.slice(0, 2) + '*****' + phone.slice(-1),
+    key: md5Text('1005' + 'OIlwieks28dk2k092lksi2UIkp' + '20489' + now),
+    pk: kgRawRsa(JSON.stringify({ clienttime_ms: now, key: secret })),
+    params: encrypted,
+  }
+  const result = await requestGateway('/v7/login_by_verifycode', state.mid, {}, payload, {
+    baseUrl: 'https://loginserviceretry.kugou.com',
+  })
+  let data = result
+  if (typeof result.secu_params === 'string' && result.secu_params) {
+    const parsed: unknown = JSON.parse(kgDecrypt(result.secu_params, secret))
+    if (typeof parsed === 'string') data = { ...result, token: parsed }
+    else if (parsed && typeof parsed === 'object') data = { ...result, ...parsed }
+  }
+  const account: KugouAccount = {
+    userId: str(data.userid ?? data.user_id),
+    token: str(data.token),
+    mid: state.mid,
+  }
+  safeAccount(account)
+  kgPhoneStates.delete(phone)
+  return account
 }
 
 export const createKugouLoginQR = async (): Promise<KugouLoginQR> => {
