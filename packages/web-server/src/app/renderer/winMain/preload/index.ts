@@ -31,6 +31,8 @@ export type ExposeServerFunctions = Omit<
   | 'loginNeteaseInWindow'
   | 'loginQQMusicInWindow'
   | 'loginKugouInWindow'
+  | 'requestMusicSMSCode'
+  | 'loginMusicWithSMSCode'
 >
 export type ClientCall = AnyListen.IPC.ClientIPC
 
