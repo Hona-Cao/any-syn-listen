@@ -380,6 +380,25 @@ const readSongs = async (account: KugouAccount, id: string): Promise<AnyListen.M
   throw new Error('酷狗歌曲分页超过安全上限')
 }
 
+const readKugouDaily = async (account: KugouAccount): Promise<MirrorPlaylist | null> => {
+  const data = await requestGateway('/everyday_song_recommend', account.mid, {
+    token: account.token, userid: account.userId,
+  }, {
+    platform: 'android', userid: account.userId,
+  }, { router: 'everydayrec.service.kugou.com' })
+  const nested = asObj(data.data)
+  const rows = [data.info, data.list, data.songs, data.songlist, data.song_list,
+    nested.info, nested.list, nested.songs, nested.song_list].find(Array.isArray)
+  if (!Array.isArray(rows) || !rows.length) return null
+  const songs: AnyListen.Music.MusicInfoOnline[] = []
+  for (const item of await fillMissingKugouMetadata(rows.map(asObj))) {
+    const song = convertKugouSong(item)
+    if (song) songs.push(song)
+  }
+  if (!songs.length) return null
+  return { key: 'daily', name: '酷狗·每日推荐', list: songs }
+}
+
 export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorPlaylist[]> => {
   safeAccount(account)
   const list = await readPlaylistItems(account)
@@ -387,7 +406,14 @@ export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorP
   for (const item of list) {
     const songs = await readSongs(account, item.id)
     if (item.count > 0 && songs.length === 0) throw new Error('酷狗歌单非空但歌曲读取失败')
-    mirrors.push({ key: 'playlist:' + item.id, name: '酷狗 · ' + item.name, list: songs })
+    const loved = /^(?:我喜欢|我的喜欢|我收藏的音乐|喜欢的音乐)$/.test(item.name.trim())
+    mirrors.push({ key: loved ? 'love' : 'playlist:' + item.id, name: loved ? '酷狗·我喜欢' : '酷狗·' + item.name, list: songs })
+  }
+  try {
+    const daily = await readKugouDaily(account)
+    if (daily) mirrors.push(daily)
+  } catch {
+    console.warn('[Kugou] Daily recommendations unavailable; account playlists were kept')
   }
   return mirrors
 }
