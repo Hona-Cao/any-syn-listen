@@ -18,7 +18,7 @@ test('NetEase SMS auth sends OTP once and stores only returned session cookie', 
     const route = new URL(url).pathname
     paths.push(route)
     assert.equal(new URL(url).protocol, 'https:')
-    assert.ok(!init.body.includes('123456'))
+    assert.ok(!String(init.body).includes('123456'))
     if (route.endsWith('nuser/account/get')) return new Response(JSON.stringify({ code: 200, account: { id: 100 } }))
     const headers = new Headers()
     if (route.endsWith('login/cellphone')) headers.append('Set-Cookie', 'MUSIC_U=verified-test-session; Secure; HttpOnly; Path=/')
