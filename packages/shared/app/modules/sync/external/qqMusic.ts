@@ -49,7 +49,7 @@ const buildComm = (credential: QQMusicCredential) => ({
   uid: credential.musicId,
   qq: credential.musicId,
   authst: credential.musicKey,
-  tmeLoginType: credential.musicKey.startsWith('W_X') ? '1' : '2',
+  tmeLoginType: credential.musicKey.startsWith('W_X') ? 1 : 2,
   loginUin: credential.musicId,
 })
 const requestQQ = async <T>(
@@ -227,7 +227,7 @@ export const readQQMusicPlaylists = async (credential: QQMusicCredential): Promi
     if ((!dissId && !dirId) || seen.has(key)) continue
     seen.add(key)
     try {
-      const songs = await details(credential, dissId, dirId, dirId === 201 ? euin : '')
+      const songs = await details(credential, dissId, dirId === 201 ? 201 : 0, dirId === 201 ? euin : '')
       lists.push({
         key,
         name: dirId === 201 ? 'QQ音乐·我喜欢' : 'QQ音乐·' + (item.dirName ?? item.name ?? '歌单'),
