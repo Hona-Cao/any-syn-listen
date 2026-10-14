@@ -1,0 +1,22 @@
+name: NetEase session unit tests
+
+on:
+  push:
+    branches:
+      - feat/lx-webdav-cloud-playlists
+  pull_request:
+    paths:
+      - 'packages/shared/app/modules/sync/external/neteaseSession.ts'
+      - 'tests/netease-session.test.mjs'
+      - '.github/workflows/netease-session-smoke.yml'
+
+jobs:
+  test-session:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test cookie parsing, renewal and error handling (mocked HTTP only)
+        run: node --experimental-strip-types --test tests/netease-session.test.mjs
