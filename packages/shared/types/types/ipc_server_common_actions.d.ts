@@ -25,6 +25,8 @@ export declare type ServerCommonActions = WarpPromiseRecord<{
   loginNeteaseInWindow: () => boolean
   loginQQMusicInWindow: () => boolean
   loginKugouInWindow: () => boolean
+  requestMusicSMSCode: (platform: 'netease' | 'kugou', phone: string) => boolean
+  loginMusicWithSMSCode: (platform: 'netease' | 'kugou', phone: string, code: string) => boolean
 
   /** 获取应用信息 */
   getAppInfo: () => { machineId: string; proxyServerHost: string }
