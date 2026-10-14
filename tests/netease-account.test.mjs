@@ -29,7 +29,7 @@ test('NetEase fetches account playlists and daily songs as separate, stable mirr
   assert.equal(result.lists[0].list[0].interval, '02:05')
   assert.deepEqual(requested, [
     'nuser/account/get', 'user/playlist', 'v3/playlist/detail',
-    'v3/song/detail', 'v3/discovery/recommend/songs',
+    'v3/song/detail', 'song/like/get', 'v3/discovery/recommend/songs',
   ])
 })
 
