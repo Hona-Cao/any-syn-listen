@@ -75,7 +75,7 @@ test('fresh standalone extension starts with no helper on any machine',async()=>
   assert.equal(h.commands.size,12)
   assert.equal(h.files.has('connection.json'),false)
   assert.equal(h.config.get('accountItems').length,3)
-  assert.equal(h.config.get('webdavItems')[0].name,'未设置')
+  assert.equal(h.config.get('webdavItems')[0].name,'LX N Music  ·  未连接')
   // 'Sync' without credentials is a native prompt, not a localhost request.
   await h.commands.get('sync')()
   assert.ok(h.dialogs.some(([msg])=>String(msg).includes('请先登录账号')))
@@ -285,4 +285,40 @@ test('QQ imported account lists fetch private favorites with encrypted profile I
   assert.equal(privateRequested,true)
   assert.ok(playlists.lists.some(x=>x.name==='QQ音乐·我喜欢'))
   assert.ok(playlists.lists.some(x=>x.name==='QQ音乐·每日推荐'))
+})
+
+test('NetEase native QR obtains a session automatically after phone approval',async()=>{
+ const hits=[],states=[]
+ const h=makeApi((url)=>{
+   const path=new URL(url).pathname
+   hits.push(path)
+   if(path.endsWith('login/qrcode/unikey'))
+     return reply({code:200,data:{unikey:'exampleLoginKey123456'}})
+   if(path.endsWith('login/qrcode/client/login'))
+     return reply({code:803},{'set-cookie':['MUSIC_U=qr-authenticated-session; HttpOnly; Path=/','__csrf=csrf; Path=/']})
+   if(path.endsWith('nuser/account/get'))
+     return reply({code:200,account:{id:4321}})
+   throw Error('Unknown QR flow endpoint: '+path)
+ })
+ const auth=await new NetEaseAccount(h.api).loginQR(state=>states.push(state))
+ assert.ok(auth.cookie.includes('MUSIC_U=qr-authenticated-session'))
+ assert.deepEqual(states,['authorizing','validating'])
+ assert.ok(h.dialogs[0][1].buttons.some(x=>x.link==='https://music.163.com/login?codekey=exampleLoginKey123456'))
+ assert.deepEqual(hits,[
+   '/weapi/login/qrcode/unikey',
+   '/weapi/login/qrcode/client/login',
+   '/weapi/nuser/account/get'
+ ])
+ assert.equal(h.smsCount(),0)
+})
+test('cancelled NetEase QR does not poll, send SMS or store a credential',async()=>{
+ const h=makeApi(url=>{
+   if(String(url).endsWith('/login/qrcode/unikey'))
+     return reply({code:200,data:{unikey:'anotherLoginKey987654'}})
+   throw Error('Cancelled login must not poll')
+ })
+ h.api.app.showMessage=async()=>0
+ const response=await new NetEaseAccount(h.api).loginQR()
+ assert.equal(response,null)
+ assert.equal(h.smsCount(),0)
 })
