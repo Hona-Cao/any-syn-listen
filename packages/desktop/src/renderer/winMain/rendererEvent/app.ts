@@ -7,6 +7,8 @@ import { appState, updateSetting } from '@/app'
 import { quit } from '@/app/actions'
 import { executeCommand } from '@/modules/command'
 import { openNeteaseLoginWindow } from '@/modules/neteaseLogin'
+import { openQQMusicLoginWindow } from '@/modules/qqMusicLogin'
+import { openKugouLoginWindow } from '@/modules/kugouLogin'
 import { clipboardReadText, clipboardWriteText, exitApp, openDirInExplorer, openUrl } from '@/shared/electron'
 import { getFonts } from '@/shared/fontManage'
 import { workers } from '@/worker'
@@ -30,6 +32,12 @@ export const createExposeApp = () => {
   return {
     async loginNeteaseInWindow() {
       return openNeteaseLoginWindow()
+    },
+    async loginQQMusicInWindow() {
+      return openQQMusicLoginWindow()
+    },
+    async loginKugouInWindow() {
+      return openKugouLoginWindow()
     },
     async getAppInfo(event) {
       return {
