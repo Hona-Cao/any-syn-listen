@@ -100,6 +100,20 @@ export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid
   }
   return { uid, lists: mirrors }
 }
+export const syncNeteaseDaily = async (cookie: string) => {
+  if (!/(?:^|;\s*)MUSIC_U=/.test(cookie)) throw new Error('网易云账号未登录')
+  const uid = await getNeteaseAccountId(cookie)
+  const daily = await post<{ code: number; data?: { dailySongs?: Song[] } }>(
+    'v3/discovery/recommend/songs', cookie, { offset: 0, total: true, limit: 30 }
+  )
+  if (!Array.isArray(daily.data?.dailySongs) || !daily.data.dailySongs.length) {
+    throw new Error('网易云每日推荐暂不可用；保留已有推荐')
+  }
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('netease:' + uid, [
+    { key: 'daily', name: '网易云·每日推荐', list: daily.data.dailySongs.map(convert) },
+  ])
+}
 export const syncNeteaseAccount = async (cookie: string) => {
   const { uid, lists } = await readNeteaseAccountPlaylists(cookie)
   const { applyExternalMirrors } = await import('./mirror')

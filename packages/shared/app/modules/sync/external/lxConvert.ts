@@ -1,4 +1,5 @@
 import type { MirrorPlaylist } from './mirror'
+import { datedLXRecommendations } from './lxLibrary'
 
 interface LXMusic {
   id?: string
@@ -87,5 +88,7 @@ export const parseLXWebDAVPlaylists = (content: string): MirrorPlaylist[] => {
       list: fromList(raw.list),
     })
   }
+  const history = datedLXRecommendations(lists)
+  for (const item of lists) if (history.has(item.key)) item.archived = true
   return lists
 }

@@ -614,6 +614,11 @@ declare global {
       /** Import LX N WebDAV lists as separate user playlists (read-only). */
       'sync.lxWebdav.enable': boolean
       'sync.lxWebdav.path': string
+      'sync.lxWebdav.writeEnable': boolean
+      /** Prevents writing back before the first remote-authoritative sync. */
+      'sync.lxWebdav.writeInitialized': boolean
+      /** Last imported LX-N mirror signature; metadata only, not a backup. */
+      'sync.lxWebdav.baseline': string
       'sync.netease.enable': boolean
       'sync.netease.cookie': string
       'sync.qq.enable': boolean

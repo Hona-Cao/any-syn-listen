@@ -2,7 +2,7 @@ name: AnySynListen integrated account browser (Windows test)
 
 on:
   push:
-    branches: [feat/native-account-browser]
+    branches: [feat/native-account-browser, feat/integrated-playlist-sync]
     paths:
       - 'packages/**'
       - '.github/workflows/native-account-browser-windows.yml'
@@ -36,7 +36,7 @@ jobs:
           if (!$app.Contains("app.setAsDefaultProtocolClient('anysynlisten')")) { throw "Fork would take over official URL protocol" }
           if (!$pack.Contains("productName: 'any-syn-listen'")) { throw "Missing distinct app name" }
       - name: Test browser partition, Cookie capture policy and login verification
-        run: node --test packages/desktop/test/nativeAccountLogin.test.mjs
+        run: node --test packages/desktop/test/nativeAccountLogin.test.mjs packages/desktop/test/lxWebdavRoundtrip.test.mjs
       - name: Bundle complete Electron desktop
         run: pnpm -F @shared/scripts build:desktop
       - name: Package portable Windows x64 application
@@ -44,7 +44,7 @@ jobs:
       - name: Upload self-contained test application
         uses: actions/upload-artifact@v4
         with:
-          name: any-syn-listen-integrated-login-windows-x64
+          name: any-syn-listen-playlist-integration-windows-x64
           path: build/*-portable.exe
           retention-days: 14
           if-no-files-found: error

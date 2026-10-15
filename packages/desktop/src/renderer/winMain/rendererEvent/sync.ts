@@ -1,4 +1,4 @@
-import { getSyncWebDAVState, runSyncWebDAV } from '@/modules/sync'
+import { getSyncWebDAVState, getExternalSyncState, runExternalSyncNow, runSyncWebDAV } from '@/modules/sync'
 
 import type { ExposeFunctions } from '.'
 
@@ -15,6 +15,12 @@ export const createExposeSync = () => {
           nextSyncTime: webdavState.nextSyncTime,
         },
       }
+    },
+    async getExternalSyncState() {
+      return getExternalSyncState()
+    },
+    async runExternalSyncNow(event, provider, dailyOnly) {
+      return runExternalSyncNow(provider, dailyOnly)
     },
     async runSyncWebDAV(event, getListMergeMode, getDislikeMergeMode) {
       return runSyncWebDAV(getListMergeMode, getDislikeMergeMode)

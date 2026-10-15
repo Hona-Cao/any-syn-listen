@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { t } from '@/plugins/i18n'
   import { loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
   import Checkbox from '@/components/base/Checkbox.svelte'
-  import { runSyncWebDAV } from '@/shared/ipc/sync'
+  import { runSyncWebDAV, getExternalSyncState, runExternalSyncNow } from '@/shared/ipc/sync'
   import Input from '@/components/base/Input.svelte'
   import { settingState } from '@/modules/setting/store/state'
   import { useSyncWebDAVState } from '@/modules/sync/reactive.svelte'
@@ -57,6 +58,37 @@
   let kugouLoginBusy = $state(false)
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
+  let lxWriteEnable = $state(settingState.setting['sync.lxWebdav.writeEnable'])
+  let externalStates = $state<Awaited<ReturnType<typeof getExternalSyncState>> | null>(null)
+  let refreshingProvider = $state<AnyListen.IPCSync.ExternalProvider | null>(null)
+
+  const refreshExternalState = async () => {
+    try { externalStates = await getExternalSyncState() } catch { /* older web builds have no native provider */ }
+  }
+  onMount(() => {
+    void refreshExternalState()
+    const timer = setInterval(() => { void refreshExternalState() }, 2500)
+    return () => { clearInterval(timer) }
+  })
+  const providerStatus = (provider: AnyListen.IPCSync.ExternalProvider, enabled: boolean, loginMessage: string) => {
+    const state = externalStates?.[provider]
+    if (state?.status === 'syncing') return '正在刷新歌单…'
+    if (state?.status === 'error') return '歌单同步失败：' + (state.error || '未知错误')
+    if (state?.status === 'success') return '歌单同步成功：' + dateFormat(state.lastSuccess)
+    return loginMessage || (enabled ? '同步已启用；登录状态待验证' : '未登录')
+  }
+  const refreshProvider = async (provider: AnyListen.IPCSync.ExternalProvider, dailyOnly = false) => {
+    if (refreshingProvider) return
+    refreshingProvider = provider
+    try {
+      await runExternalSyncNow(provider, dailyOnly)
+    } catch {
+      // The independent provider state contains the error; don't open a modal.
+    } finally {
+      await refreshExternalState()
+      refreshingProvider = null
+    }
+  }
 
   const runSync = async () => {
     await runSyncWebDAV(
@@ -198,6 +230,26 @@
         />
       </div>
     {/if}
+    {#if lxEnable}
+      <div class="gap-top">
+        <Checkbox
+          label="LX-N 双向同步（允许回写整库，最后写入覆盖，无自动备份）"
+          id="sync.lxWebdav.writeEnable"
+          checked={lxWriteEnable}
+          onchange={(val) => {
+            lxWriteEnable = val
+            // Every off/on transition re-establishes WebDAV as the initial source.
+            void updateSetting({ 'sync.lxWebdav.writeEnable': val, 'sync.lxWebdav.writeInitialized': false })
+          }}
+        />
+      </div>
+      <div class="gap-top">
+        <Btn disabled={refreshingProvider !== null} onclick={() => refreshProvider('lx')}>
+          {refreshingProvider === 'lx' ? '正在同步…' : '立即同步 LX-N'}
+        </Btn>
+        <span class="account-status">{providerStatus('lx', lxEnable, '')}</span>
+      </div>
+    {/if}
     {#if !import.meta.env.VITE_IS_DESKTOP}
       <div class="gap-top">
         <Checkbox
@@ -248,7 +300,7 @@
               const loggedIn = await loginNeteaseInWindow()
               if (loggedIn) {
                 neteaseEnable = true
-                neteaseLoginMessage = '登录成功'
+                neteaseLoginMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               neteaseLoginMessage = (error as Error).message
@@ -257,7 +309,13 @@
             }
           }}
         >{neteaseLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{neteaseLoginMessage || (neteaseEnable ? '同步已启用' : '未登录')}</span>
+        <Btn disabled={refreshingProvider !== null || !neteaseEnable} onclick={() => refreshProvider('netease')}>
+          {refreshingProvider === 'netease' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !neteaseEnable} onclick={() => refreshProvider('netease', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-status">{providerStatus('netease', neteaseEnable, neteaseLoginMessage)}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">QQ 音乐</span>
@@ -271,7 +329,7 @@
               const loggedIn = await loginQQMusicInWindow()
               if (loggedIn) {
                 qqEnable = true
-                qqMessage = '登录成功'
+                qqMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               qqMessage = (error as Error).message
@@ -280,7 +338,13 @@
             }
           }}
         >{qqLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{qqMessage || (qqEnable ? '同步已启用' : '未登录')}</span>
+        <Btn disabled={refreshingProvider !== null || !qqEnable} onclick={() => refreshProvider('qq')}>
+          {refreshingProvider === 'qq' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !qqEnable} onclick={() => refreshProvider('qq', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-status">{providerStatus('qq', qqEnable, qqMessage)}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">酷狗音乐</span>
@@ -294,7 +358,7 @@
               const loggedIn = await loginKugouInWindow()
               if (loggedIn) {
                 kugouEnable = true
-                kugouMessage = '登录成功'
+                kugouMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               kugouMessage = (error as Error).message
@@ -303,7 +367,13 @@
             }
           }}
         >{kugouLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{kugouMessage || (kugouEnable ? '同步已启用' : '未登录')}</span>
+        <Btn disabled={refreshingProvider !== null || !kugouEnable} onclick={() => refreshProvider('kugou')}>
+          {refreshingProvider === 'kugou' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !kugouEnable} onclick={() => refreshProvider('kugou', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-status">{providerStatus('kugou', kugouEnable, kugouMessage)}</span>
       </div>
     </div>
   </TitleContent>

@@ -2,6 +2,13 @@ declare namespace AnyListen {
   namespace IPCSync {
     type SyncStatus = 'idle' | 'waiting' | 'syncing' | 'error'
 
+    type ExternalProvider = 'netease' | 'qq' | 'kugou' | 'lx'
+    interface ExternalState {
+      status: 'idle' | 'syncing' | 'success' | 'error'
+      lastSuccess: number
+      lastTry: number
+      error?: string
+    }
     interface SyncState {
       webdav: {
         status: SyncStatus
@@ -12,6 +19,8 @@ declare namespace AnyListen {
 
     type ServerActions = WarpPromiseRecord<{
       getSyncState: () => SyncState
+      getExternalSyncState: () => Record<ExternalProvider, ExternalState>
+      runExternalSyncNow: (provider: ExternalProvider, dailyOnly?: boolean) => void
       runSyncWebDAV: (
         getListMergeMode?: () => Promise<List.MergeMode>,
         getDislikeMergeMode?: () => Promise<Dislike.MergeMode>

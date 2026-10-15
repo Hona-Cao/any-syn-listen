@@ -278,6 +278,12 @@ export const readQQMusicPlaylists = async (credential: QQMusicCredential): Promi
   if (!lists.length) throw new Error('QQ 音乐已登录，但暂时无法获取歌单或推荐，请稍后重试')
   return lists
 }
+export const syncQQMusicDaily = async (credential: QQMusicCredential) => {
+  const daily = await getQQDaily(credential)
+  if (!daily) throw new Error('QQ 每日推荐暂不可用；保留已有推荐')
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('qqmusic:' + credential.musicId, [daily])
+}
 export const syncQQMusicAccount = async (credential: QQMusicCredential) => {
   const lists = await readQQMusicPlaylists(credential)
   const { applyExternalMirrors } = await import('./mirror')

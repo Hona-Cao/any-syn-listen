@@ -417,6 +417,13 @@ export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorP
   }
   return mirrors
 }
+export const syncKugouDaily = async (account: KugouAccount) => {
+  safeAccount(account)
+  const daily = await readKugouDaily(account)
+  if (!daily) throw new Error('酷狗每日推荐暂不可用；保留已有推荐')
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('kugou:' + account.userId, [daily])
+}
 export const syncKugouAccount = async (account: KugouAccount) => {
   const playlists = await readKugouPlaylists(account)
   const { applyExternalMirrors } = await import('./mirror')

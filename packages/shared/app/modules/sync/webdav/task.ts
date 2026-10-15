@@ -1,8 +1,8 @@
 import { getSettings } from '../../../common'
 import { syncLXWebDAV } from '../external/lxWebdav'
-import { syncQQMusicAccount, type QQMusicCredential } from '../external/qqMusic'
-import { syncKugouAccount, type KugouAccount } from '../external/kugouMusic'
-import { syncNeteaseAccount } from '../external/netease'
+import { syncQQMusicAccount, syncQQMusicDaily, type QQMusicCredential } from '../external/qqMusic'
+import { syncKugouAccount, syncKugouDaily, type KugouAccount } from '../external/kugouMusic'
+import { syncNeteaseAccount, syncNeteaseDaily } from '../external/netease'
 import { refreshNeteaseCookie } from '../external/neteaseSession'
 import { sendSyncWebDAVStatus } from './shared'
 import { state } from './state'
@@ -25,51 +25,98 @@ let otherMusicSessionProvider: OtherMusicSessionProvider | undefined
 export const configureOtherMusicSessionProvider = (provider: OtherMusicSessionProvider) => {
   otherMusicSessionProvider = provider
 }
+let saveLXBaseline: ((baseline: string) => Promise<void> | void) | undefined
+export const configureLXBaselineSaver = (save: typeof saveLXBaseline) => {
+  saveLXBaseline = save
+}
+
+export type ExternalSyncProvider = 'netease' | 'qq' | 'kugou' | 'lx'
+export interface ExternalSyncResult {
+  status: 'idle' | 'syncing' | 'success' | 'error'
+  lastSuccess: number
+  lastTry: number
+  error?: string
+}
+const externalStatus: Record<ExternalSyncProvider, ExternalSyncResult> = {
+  netease: { status: 'idle', lastSuccess: 0, lastTry: 0 },
+  qq: { status: 'idle', lastSuccess: 0, lastTry: 0 },
+  kugou: { status: 'idle', lastSuccess: 0, lastTry: 0 },
+  lx: { status: 'idle', lastSuccess: 0, lastTry: 0 },
+}
+export const getExternalSyncState = (): Record<ExternalSyncProvider, ExternalSyncResult> => ({
+  netease: { ...externalStatus.netease },
+  qq: { ...externalStatus.qq },
+  kugou: { ...externalStatus.kugou },
+  lx: { ...externalStatus.lx },
+})
+const start = (provider: ExternalSyncProvider) => {
+  externalStatus[provider] = { ...externalStatus[provider], status: 'syncing', lastTry: Date.now(), error: undefined }
+}
+const succeed = (provider: ExternalSyncProvider) => {
+  externalStatus[provider] = { ...externalStatus[provider], status: 'success', lastSuccess: Date.now(), error: undefined }
+}
+const fail = (provider: ExternalSyncProvider, error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error)
+  // Never expose sensitive credential strings or authorization headers via the renderer.
+  externalStatus[provider] = {
+    ...externalStatus[provider], status: 'error',
+    error: message.replace(/(MUSIC_U|qqmusic_key|token|password)=[^;&\s]+/ig, '$1=[redacted]').slice(0, 240),
+  }
+}
+
 const OTHER_SYNC_INTERVAL = 3 * 60 * 60 * 1000
 const OTHER_RETRY_INTERVAL = 30 * 60 * 1000
 const otherStatus = {
   qq: { identity: '', lastSync: 0, lastTry: 0, running: false },
   kugou: { identity: '', lastSync: 0, lastTry: 0, running: false },
 }
-const syncOtherMusicIfDue = async () => {
-  if (!otherMusicSessionProvider) return
-  const settings = getSettings()
-  const run = async (
-    key: keyof typeof otherStatus,
-    enabled: boolean,
-    credential: QQMusicCredential | KugouAccount | null,
-    sync: () => Promise<unknown>
-  ) => {
-    if (!enabled || !credential) return
-    const status = otherStatus[key]
-    if (status.running) return
-    const identity = JSON.stringify(credential)
-    if (identity !== status.identity) {
-      status.identity = identity
-      status.lastSync = 0
-      status.lastTry = 0
-    }
-    const now = Date.now()
-    if (now - status.lastTry < OTHER_RETRY_INTERVAL || now - status.lastSync < OTHER_SYNC_INTERVAL) return
-    status.lastTry = now
-    status.running = true
-    try {
-      await sync()
-      status.lastSync = Date.now()
-    } catch (err) {
-      console.warn('[' + key + '] Account mirror failed:', (err as Error).message)
-    } finally {
-      status.running = false
-    }
+const syncOtherOne = async (key: 'qq' | 'kugou', forced = false, dailyOnly = false) => {
+  if (!otherMusicSessionProvider) {
+    if (forced) throw new Error('Desktop account session provider is unavailable')
+    return
   }
-  const [qq, kg] = await Promise.all([
-    settings['sync.qq.enable'] ? otherMusicSessionProvider.getQQ() : Promise.resolve(null),
-    settings['sync.kugou.enable'] ? otherMusicSessionProvider.getKugou() : Promise.resolve(null),
-  ])
-  await Promise.all([
-    run('qq', settings['sync.qq.enable'], qq, () => syncQQMusicAccount(qq as QQMusicCredential)),
-    run('kugou', settings['sync.kugou.enable'], kg, () => syncKugouAccount(kg as KugouAccount)),
-  ])
+  const settings = getSettings()
+  if (!settings[key === 'qq' ? 'sync.qq.enable' : 'sync.kugou.enable']) {
+    if (forced) throw new Error('Please enable account sync first')
+    return
+  }
+  const credential = key === 'qq'
+    ? await otherMusicSessionProvider.getQQ()
+    : await otherMusicSessionProvider.getKugou()
+  if (!credential) {
+    if (forced) throw new Error('请先完成平台账号登录')
+    return
+  }
+  const status = otherStatus[key]
+  if (status.running) return
+  const identity = JSON.stringify(credential)
+  if (identity !== status.identity) {
+    status.identity = identity
+    status.lastSync = 0
+    status.lastTry = 0
+  }
+  const now = Date.now()
+  if (!forced && (now - status.lastTry < OTHER_RETRY_INTERVAL || now - status.lastSync < OTHER_SYNC_INTERVAL)) return
+  status.lastTry = now
+  status.running = true
+  start(key)
+  try {
+    if (key === 'qq') {
+      if (dailyOnly) await syncQQMusicDaily(credential as QQMusicCredential)
+      else await syncQQMusicAccount(credential as QQMusicCredential)
+    } else {
+      if (dailyOnly) await syncKugouDaily(credential as KugouAccount)
+      else await syncKugouAccount(credential as KugouAccount)
+    }
+    if (!dailyOnly) status.lastSync = Date.now()
+    succeed(key)
+  } catch (err) {
+    fail(key, err)
+    console.warn('[' + key + '] Account mirror failed:', (err as Error).message)
+    if (forced) throw err
+  } finally {
+    status.running = false
+  }
 }
 
 const NETEASE_LIST_INTERVAL = 3 * 60 * 60 * 1000
@@ -82,11 +129,18 @@ let neteaseLastCookie = ''
 let neteaseSyncInProgress = false
 let reauthNotified = false
 
-const syncNeteaseIfDue = async () => {
+const syncNeteaseIfDue = async (forced = false, dailyOnly = false) => {
   const settings = getSettings()
-  if (!settings['sync.netease.enable'] || neteaseSyncInProgress) return
+  if (!settings['sync.netease.enable']) {
+    if (forced) throw new Error('请先开启网易云账号同步')
+    return
+  }
+  if (neteaseSyncInProgress) return
   let cookie = await neteaseSessionProvider?.getCookie() ?? settings['sync.netease.cookie']
-  if (!cookie) return
+  if (!cookie) {
+    if (forced) throw new Error('请先登录网易云音乐')
+    return
+  }
   if (cookie !== neteaseLastCookie) {
     neteaseLastCookie = cookie
     neteaseLastSync = 0
@@ -95,13 +149,12 @@ const syncNeteaseIfDue = async () => {
     reauthNotified = false
   }
   const now = Date.now()
-  if (now - neteaseLastSync < NETEASE_LIST_INTERVAL || now - neteaseLastTry < NETEASE_RETRY_INTERVAL) return
+  if (!forced && (now - neteaseLastSync < NETEASE_LIST_INTERVAL || now - neteaseLastTry < NETEASE_RETRY_INTERVAL)) return
   neteaseSyncInProgress = true
   neteaseLastTry = now
+  start('netease')
   try {
-    // Attempt once per 18 hours; a QR/webview cookie may not be refreshable.
-    // Never re-login or retry requests rapidly after platform errors.
-    if (now - neteaseLastRefresh >= NETEASE_REFRESH_INTERVAL) {
+    if (!dailyOnly && now - neteaseLastRefresh >= NETEASE_REFRESH_INTERVAL) {
       neteaseLastRefresh = now
       try {
         const refreshed = await refreshNeteaseCookie(cookie)
@@ -111,52 +164,106 @@ const syncNeteaseIfDue = async () => {
           neteaseLastCookie = refreshed
         }
       } catch {
-        console.warn('[NetEase] Refresh unavailable; existing session will be checked')
+        console.warn('[NetEase] Session refresh unavailable; using existing session')
       }
     }
-    await syncNeteaseAccount(cookie)
-    neteaseLastSync = Date.now()
+    if (dailyOnly) await syncNeteaseDaily(cookie)
+    else {
+      await syncNeteaseAccount(cookie)
+      neteaseLastSync = Date.now()
+    }
     reauthNotified = false
+    succeed('netease')
   } catch (err) {
+    fail('netease', err)
     const message = (err as Error).message
     console.warn('[NetEase] Account synchronization failed:', message)
     if (!reauthNotified && /\b(301|401)\b|expired|not authenticated|login expired/i.test(message)) {
       reauthNotified = true
       await neteaseSessionProvider?.notifyReauth?.()
     }
+    if (forced) throw err
   } finally {
     neteaseSyncInProgress = false
   }
 }
-const handleSync = async () => {
+
+let lxRunning = false
+const syncLXIfDue = async (forced = false) => {
   const settings = getSettings()
-  // Cloud account imports run independently from the native WebDAV lock state.
-  await Promise.all([syncNeteaseIfDue(), syncOtherMusicIfDue()])
-  if (settings['sync.lxWebdav.enable'] && settings['sync.webdav.url'] && settings['sync.webdav.username']) {
+  if (!settings['sync.lxWebdav.enable'] || !settings['sync.webdav.url'] || !settings['sync.webdav.username']) {
+    if (forced) throw new Error('请先启用 LX-N 和配置 WebDAV')
+    return
+  }
+  if (lxRunning) return
+  lxRunning = true
+  start('lx')
+  try {
     await syncLXWebDAV({
       url: settings['sync.webdav.url'],
       username: settings['sync.webdav.username'],
       password: settings['sync.webdav.password'],
       path: settings['sync.lxWebdav.path'],
-    }).catch((err: Error) => {
-      console.warn('[LX N WebDAV] Failed to read remote playlist:', err.message)
+      writeEnable: settings['sync.lxWebdav.writeEnable'] && settings['sync.lxWebdav.writeInitialized'],
+      baseline: settings['sync.lxWebdav.baseline'],
+      saveBaseline: saveLXBaseline,
     })
+    succeed('lx')
+  } catch (err) {
+    fail('lx', err)
+    console.warn('[LX N WebDAV] Sync failed:', (err as Error).message)
+    if (forced) throw err
+  } finally {
+    lxRunning = false
   }
-  const current = getSyncWebDAVState()
-  if (current.status !== 'idle' && current.status !== 'error') return
-  if (
-    settings['sync.webdav.enable'] &&
-    !!settings['sync.webdav.url'] &&
-    !!settings['sync.webdav.username'] &&
-    !!settings['sync.webdav.path'] &&
-    (settings['sync.webdav.syncEnable.dislike'] || settings['sync.webdav.syncEnable.list'])
-  ) {
-    await runSyncWebDAV({
-      url: settings['sync.webdav.url'],
-      username: settings['sync.webdav.username'],
-      password: settings['sync.webdav.password'],
-      path: settings['sync.webdav.path'],
-    })
+}
+
+/** Manual refresh bypasses the three-hour provider cache, but is never a login. */
+export const runExternalSyncNow = async (provider: ExternalSyncProvider, dailyOnly = false) => {
+  try {
+    switch (provider) {
+      case 'netease':
+        return await syncNeteaseIfDue(true, dailyOnly)
+      case 'qq':
+      case 'kugou':
+        return await syncOtherOne(provider, true, dailyOnly)
+      case 'lx':
+        if (dailyOnly) throw new Error('LX-N 日推由手机端生成；这里只能同步已有歌单')
+        return await syncLXIfDue(true)
+    }
+  } catch (err) {
+    // Covers preflight failures as well as network errors (e.g. no account
+    // session); the renderer never needs to catch a secret-bearing exception.
+    fail(provider, err)
+    throw err
+  }
+}
+
+let taskInProgress = false
+const handleSync = async () => {
+  if (taskInProgress) return
+  taskInProgress = true
+  try {
+    await Promise.allSettled([syncNeteaseIfDue(), syncOtherOne('qq'), syncOtherOne('kugou'), syncLXIfDue()])
+    const settings = getSettings()
+    const current = getSyncWebDAVState()
+    if (current.status !== 'idle' && current.status !== 'error') return
+    if (
+      settings['sync.webdav.enable'] &&
+      !!settings['sync.webdav.url'] &&
+      !!settings['sync.webdav.username'] &&
+      !!settings['sync.webdav.path'] &&
+      (settings['sync.webdav.syncEnable.dislike'] || settings['sync.webdav.syncEnable.list'])
+    ) {
+      await runSyncWebDAV({
+        url: settings['sync.webdav.url'],
+        username: settings['sync.webdav.username'],
+        password: settings['sync.webdav.password'],
+        path: settings['sync.webdav.path'],
+      })
+    }
+  } finally {
+    taskInProgress = false
   }
 }
 
@@ -166,14 +273,14 @@ export const runWebDAVSyncTask = (immediately?: boolean) => {
     clearTimeout(webdavSyncTaskTimeout)
     webdavSyncTaskTimeout = undefined
   }
-  if (immediately) void handleSync()
+  if (immediately) void handleSync().catch((err) => console.warn('[Sync task]', (err as Error).message))
   webdavSyncTaskTimeout = setTimeout(() => {
     webdavSyncTaskTimeout = undefined
     void handleSync().finally(() => {
       runWebDAVSyncTask()
     })
-  }, 180_000)
-  state.nextSyncTime = Date.now() + 180_000
+  }, 60_000)
+  state.nextSyncTime = Date.now() + 60_000
   sendSyncWebDAVStatus()
 }
 export const cancelWebDAVSyncTask = () => {

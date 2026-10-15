@@ -10,11 +10,15 @@
     listInfo,
     picStyle,
     active,
+    selected = false,
+    onactivate,
     oncontextmenu,
   }: {
     listInfo: AnyListen.List.MyListInfo
     index: number
     active?: boolean
+    selected?: boolean
+    onactivate?: (event: MouseEvent) => boolean
     picStyle: string
     oncontextmenu?: MouseEventHandler<HTMLDivElement>
   } = $props()
@@ -36,6 +40,7 @@
 <div
   class="container"
   class:active={$query.id == listInfo.id || active}
+  class:selected
   class:fetching={fetching.val}
   role="button"
   aria-label={listInfo.name}
@@ -52,7 +57,7 @@
         break
     }
   }}
-  onclick={handleSelect}
+  onclick={(event) => { if (!onactivate?.(event)) handleSelect() }}
   {oncontextmenu}
 >
   <div class="left" style={picStyle}>
@@ -89,6 +94,10 @@
   }
   .active {
     background-color: var(--color-primary-background);
+  }
+  .selected {
+    background-color: var(--color-primary-background-hover);
+    outline: 1px solid var(--color-primary-font-hover);
   }
   .fetching {
     opacity: 0.5;
