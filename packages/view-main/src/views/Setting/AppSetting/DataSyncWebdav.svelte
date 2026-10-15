@@ -248,7 +248,7 @@
               const loggedIn = await loginNeteaseInWindow()
               if (loggedIn) {
                 neteaseEnable = true
-                neteaseLoginMessage = '登录成功'
+                neteaseLoginMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               neteaseLoginMessage = (error as Error).message
@@ -257,7 +257,7 @@
             }
           }}
         >{neteaseLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{neteaseLoginMessage || (neteaseEnable ? '同步已启用' : '未登录')}</span>
+        <span class="account-status">{neteaseLoginMessage || (neteaseEnable ? '同步已启用；登录状态待验证' : '未登录')}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">QQ 音乐</span>
@@ -271,7 +271,7 @@
               const loggedIn = await loginQQMusicInWindow()
               if (loggedIn) {
                 qqEnable = true
-                qqMessage = '登录成功'
+                qqMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               qqMessage = (error as Error).message
@@ -280,7 +280,7 @@
             }
           }}
         >{qqLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{qqMessage || (qqEnable ? '同步已启用' : '未登录')}</span>
+        <span class="account-status">{qqMessage || (qqEnable ? '同步已启用；登录状态待验证' : '未登录')}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">酷狗音乐</span>
@@ -294,7 +294,7 @@
               const loggedIn = await loginKugouInWindow()
               if (loggedIn) {
                 kugouEnable = true
-                kugouMessage = '登录成功'
+                kugouMessage = '账号已验证；歌单同步待确认'
               }
             } catch (error) {
               kugouMessage = (error as Error).message
@@ -303,7 +303,7 @@
             }
           }}
         >{kugouLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{kugouMessage || (kugouEnable ? '同步已启用' : '未登录')}</span>
+        <span class="account-status">{kugouMessage || (kugouEnable ? '同步已启用；登录状态待验证' : '未登录')}</span>
       </div>
     </div>
   </TitleContent>
