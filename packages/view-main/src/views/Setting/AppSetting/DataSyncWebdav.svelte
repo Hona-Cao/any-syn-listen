@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '@/plugins/i18n'
-  import { loginQQMusicInWindow, requestMusicSMSCode, loginMusicWithSMSCode } from '@/shared/ipc/app'
+  import { loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
@@ -48,15 +48,13 @@
   let neteaseEnable = $state(settingState.setting['sync.netease.enable'])
   let neteaseCookie = $state(settingState.setting['sync.netease.cookie'])
   let neteaseLoginMessage = $state('')
-  let smsPlatform = $state<'netease' | 'kugou' | null>(null)
-  let smsPhone = $state('')
-  let smsCode = $state('')
-  let smsBusy = $state(false)
-  let smsStatus = $state('')
+  let neteaseLoginBusy = $state(false)
   let qqEnable = $state(settingState.setting['sync.qq.enable'])
   let qqMessage = $state('')
+  let qqLoginBusy = $state(false)
   let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
   let kugouMessage = $state('')
+  let kugouLoginBusy = $state(false)
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
 
@@ -200,94 +198,7 @@
         />
       </div>
     {/if}
-    {#if import.meta.env.VITE_IS_DESKTOP}
-      <div class="gap-top">
-        <Btn onclick={() => {
-          smsPlatform = smsPlatform === 'netease' ? null : 'netease'
-          smsStatus = ''
-          smsPhone = ''
-          smsCode = ''
-        }}>网易云账号登录</Btn>
-        <Btn onclick={async () => {
-          qqMessage = ''
-          try {
-            if (await loginQQMusicInWindow()) {
-              qqEnable = true
-              qqMessage = '登录成功'
-            }
-          } catch (error) {
-            qqMessage = (error as Error).message
-          }
-        }}>QQ 音乐账号登录</Btn>
-        <Btn onclick={() => {
-          smsPlatform = smsPlatform === 'kugou' ? null : 'kugou'
-          smsStatus = ''
-          smsPhone = ''
-          smsCode = ''
-        }}>酷狗账号登录</Btn>
-      </div>
-      {#if qqMessage}<p class="small">{qqMessage}</p>{/if}
-      {#if neteaseLoginMessage}<p class="small">{neteaseLoginMessage}</p>{/if}
-      {#if kugouMessage}<p class="small">{kugouMessage}</p>{/if}
-      {#if smsPlatform}
-        <div class="gap-top">
-          <Input
-            type="tel"
-            placeholder="手机号"
-            bind:value={smsPhone}
-            onchange={(value) => { smsPhone = value }}
-          />
-          <Btn
-            disabled={smsBusy || !/^1\d{10}$/.test(smsPhone)}
-            onclick={async () => {
-              if (!smsPlatform) return
-              smsBusy = true
-              smsStatus = ''
-              try {
-                await requestMusicSMSCode(smsPlatform, smsPhone)
-                smsStatus = '验证码已发送'
-              } catch (err) {
-                smsStatus = (err as Error).message
-              } finally {
-                smsBusy = false
-              }
-            }}
-          >获取验证码</Btn>
-        </div>
-        <div class="gap-top">
-          <Input
-            placeholder="验证码"
-            bind:value={smsCode}
-            onchange={(value) => { smsCode = value }}
-          />
-          <Btn
-            disabled={smsBusy || !/^\d{4,8}$/.test(smsCode)}
-            onclick={async () => {
-              if (!smsPlatform) return
-              smsBusy = true
-              smsStatus = ''
-              try {
-                const platform = smsPlatform
-                const success = await loginMusicWithSMSCode(platform, smsPhone, smsCode)
-                if (success) {
-                  if (platform === 'netease') neteaseEnable = true
-                  if (platform === 'kugou') kugouEnable = true
-                  smsCode = ''
-                  smsPlatform = null
-                  neteaseLoginMessage = platform === 'netease' ? '登录成功' : ''
-                  kugouMessage = platform === 'kugou' ? '登录成功' : ''
-                }
-              } catch (err) {
-                smsStatus = (err as Error).message
-              } finally {
-                smsBusy = false
-              }
-            }}
-          >登录</Btn>
-        </div>
-        {#if smsStatus}<p class="small">{smsStatus}</p>{/if}
-      {/if}
-    {:else}
+    {#if !import.meta.env.VITE_IS_DESKTOP}
       <div class="gap-top">
         <Checkbox
           label="网易云歌单同步"
@@ -322,7 +233,93 @@
   </div>
 </TitleContent>
 
+{#if import.meta.env.VITE_IS_DESKTOP}
+  <TitleContent name="音乐平台账号">
+    <div class="settings-item-content">
+      <div class="account-line">
+        <span class="account-platform">网易云音乐</span>
+        <Btn
+          disabled={neteaseLoginBusy}
+          onclick={async () => {
+            if (neteaseLoginBusy) return
+            neteaseLoginBusy = true
+            neteaseLoginMessage = ''
+            try {
+              const loggedIn = await loginNeteaseInWindow()
+              if (loggedIn) {
+                neteaseEnable = true
+                neteaseLoginMessage = '登录成功'
+              }
+            } catch (error) {
+              neteaseLoginMessage = (error as Error).message
+            } finally {
+              neteaseLoginBusy = false
+            }
+          }}
+        >{neteaseLoginBusy ? '登录中…' : '登录'}</Btn>
+        <span class="account-status">{neteaseLoginMessage || (neteaseEnable ? '同步已启用' : '未登录')}</span>
+      </div>
+      <div class="account-line">
+        <span class="account-platform">QQ 音乐</span>
+        <Btn
+          disabled={qqLoginBusy}
+          onclick={async () => {
+            if (qqLoginBusy) return
+            qqLoginBusy = true
+            qqMessage = ''
+            try {
+              const loggedIn = await loginQQMusicInWindow()
+              if (loggedIn) {
+                qqEnable = true
+                qqMessage = '登录成功'
+              }
+            } catch (error) {
+              qqMessage = (error as Error).message
+            } finally {
+              qqLoginBusy = false
+            }
+          }}
+        >{qqLoginBusy ? '登录中…' : '登录'}</Btn>
+        <span class="account-status">{qqMessage || (qqEnable ? '同步已启用' : '未登录')}</span>
+      </div>
+      <div class="account-line">
+        <span class="account-platform">酷狗音乐</span>
+        <Btn
+          disabled={kugouLoginBusy}
+          onclick={async () => {
+            if (kugouLoginBusy) return
+            kugouLoginBusy = true
+            kugouMessage = ''
+            try {
+              const loggedIn = await loginKugouInWindow()
+              if (loggedIn) {
+                kugouEnable = true
+                kugouMessage = '登录成功'
+              }
+            } catch (error) {
+              kugouMessage = (error as Error).message
+            } finally {
+              kugouLoginBusy = false
+            }
+          }}
+        >{kugouLoginBusy ? '登录中…' : '登录'}</Btn>
+        <span class="account-status">{kugouMessage || (kugouEnable ? '同步已启用' : '未登录')}</span>
+      </div>
+    </div>
+  </TitleContent>
+{/if}
+
+
 <style lang="less">
+  .account-line {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 16px;
+    align-items: center;
+    padding: 6px 0;
+  }
+  .account-platform { width: 100px; }
+  .account-status { opacity: 0.7; }
   .gap-top {
     display: flex;
     flex-flow: row nowrap;
