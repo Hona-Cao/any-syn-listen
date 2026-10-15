@@ -1,5 +1,6 @@
 import type { MirrorPlaylist } from './mirror'
-import { datedLXRecommendations } from './lxLibrary'
+// @ts-ignore Node's TypeScript strip-types tests require explicit .ts extension; Vite resolves it.
+import { datedLXRecommendations } from './lxLibrary.ts'
 
 interface LXMusic {
   id?: string

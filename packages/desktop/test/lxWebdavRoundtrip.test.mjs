@@ -106,3 +106,29 @@ test('first-time writable LX sync imports remote; later local edits upload', () 
   assert.equal(planLXDirection(true, 'remote:old-hash', 'remote:', 'new-hash'), 'write')
   assert.equal(planLXDirection(true, 'remote:same-hash', 'remote:', 'same-hash'), 'import')
 })
+
+test('desktop edits to existing songs write back without removing LX-specific metadata', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  const local = localFrom(doc)
+  local.find(item => item.key === 'default').songs[0].name = '修改后的曲名'
+  local.find(item => item.key === 'default').songs[0].singer = '新歌手'
+  local.find(item => item.key === 'user:new').songs[0].name = '重命名的日推曲目'
+  const result = materializeLXDocument(doc, local, 5000)
+  assert.equal(result.data.defaultList[0].name, '修改后的曲名')
+  assert.equal(result.data.defaultList[0].singer, '新歌手')
+  assert.deepEqual(result.data.defaultList[0].meta, doc.data.defaultList[0].meta)
+  assert.equal(result.data.userList[1].list[0].name, '重命名的日推曲目')
+})
+
+test('edits to existing songs survive adding another song to the same list', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  const local = localFrom(doc)
+  local.find(item => item.key === 'default').songs[0].name = '改名后的试听'
+  local.find(item => item.key === 'default').songs.push({
+    id: 'wy_100', name: '新增', singer: 'B', interval: null,
+    isLocal: false, meta: { source: 'wy', musicId: '100' },
+  })
+  const result = materializeLXDocument(doc, local, 5000)
+  assert.deepEqual(result.data.defaultList.map(s => s.name), ['改名后的试听', '新增'])
+  assert.deepEqual(result.data.defaultList[0].meta, doc.data.defaultList[0].meta)
+})

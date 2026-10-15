@@ -81,8 +81,16 @@ const toRawSong = (song: LXLocalList['songs'][number]): LXRawSong => {
 const updateSongs = (original: LXRawSong[], changed: LXLocalList['songs']): LXRawSong[] => {
   const originalIds = original.map(song => song.id)
   const changedIds = changed.map(song => song.id)
-  // Unmodified playlists must retain all LX-specific metadata byte-for-byte.
-  if (JSON.stringify(originalIds) === JSON.stringify(changedIds)) return original
+  const sameOrder = JSON.stringify(originalIds) === JSON.stringify(changedIds)
+  const patchSong = (originalSong: LXRawSong, song: LXLocalList['songs'][number]): LXRawSong => {
+    // Keep the original LX metadata (including quality/source identifiers).
+    // Changes to song display fields are allowed without losing metadata.
+    if (originalSong.name === song.name &&
+        (originalSong.singer ?? '') === song.singer &&
+        (originalSong.interval ?? null) === song.interval) return originalSong
+    return { ...originalSong, name: song.name, singer: song.singer, interval: song.interval }
+  }
+  if (sameOrder) return original.map((item, index) => patchSong(item, changed[index]))
   // If any source song was not representable by the mirror, a user edit must
   // not silently drop it. Abort rather than corrupt a mixed local/online list.
   if (original.some(song => song.source === 'local' || !song.id || !song.name)) {
@@ -93,7 +101,8 @@ const updateSongs = (original: LXRawSong[], changed: LXLocalList['songs']): LXRa
   return changed.map(song => {
     if (seen.has(song.id)) throw new Error('LX-N: duplicate song IDs cannot be written back')
     seen.add(song.id)
-    return byId.get(song.id) ?? toRawSong(song)
+    const item = byId.get(song.id)
+    return item ? patchSong(item, song) : toRawSong(song)
   })
 }
 
