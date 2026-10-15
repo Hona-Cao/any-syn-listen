@@ -1,5 +1,8 @@
 # AnySynListen 原生账号登录（测试版）
 
+> 最新开发进度、Windows 测试程序及下一轮对话接手说明：[开发交接文档](./DEVELOPMENT_HANDOFF_zh.md)。
+
+
 这属于 AnySynListen 主程序改动，并非可以安装在官方 AnyListen 里的独立 .alix 扩展。
 官方插件无法读取外部 Chrome 的 HttpOnly Cookie。
 
