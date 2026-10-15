@@ -1,5 +1,6 @@
 <script lang="ts">
   import ListItem from './ListItem.svelte'
+  import { isPlaylistDeleteShortcut, resolvePlaylistContext, type PlaylistBulkAction } from './selection'
   import Menu from './Menu.svelte'
   import { useListItemHeight } from '@/modules/app/reactive.svelte'
   import type { Position } from '@/components/base/Menu.svelte'
@@ -51,7 +52,7 @@
     ...userLists.val.filter(item => !isHidden(item)),
     ...(showArchived ? userLists.val.filter(isHidden) : []),
   ])
-  const selectedItems = $derived(userLists.val.filter(item => selectedIds.includes(item.id)))
+  const selectedItems = $derived(lists.filter(item => item.type === 'general' && selectedIds.includes(item.id)))
   let activeIndex = $state(-1)
 
   const selectItem = (item: AnyListen.List.MyListInfo, event: MouseEvent) => {
@@ -83,15 +84,15 @@
     anchor = item.id
     return false
   }
-  const batch = async (action: 'archive' | 'restore' | 'remove') => {
-    if (busy || !selectedItems.length) return
+  const batch = async (action: PlaylistBulkAction, targets: AnyListen.List.MyListInfo[] = selectedItems) => {
+    if (busy || !targets.length) return
     busy = true
     try {
-      if (action === 'archive') await archiveUserLists(selectedItems, true)
+      if (action === 'archive') await archiveUserLists(targets, true)
       else if (action === 'restore') {
-        await archiveUserLists(selectedItems, false)
-        await restoreHiddenMirrors(selectedItems)
-      } else await removeUserLists(selectedItems)
+        await archiveUserLists(targets, false)
+        await restoreHiddenMirrors(targets)
+      } else await removeUserLists(targets)
       selectedIds = []
       anchor = null
     } catch (err) {
@@ -102,7 +103,12 @@
   }
 
   const showMenu = (item: AnyListen.List.MyListInfo | null, position: Position) => {
-    menu.show(item, position)
+    // Right click must never discard a multi-selection when it lands on one
+    // of its members. Outside clicks switch to that one playlist instead.
+    const context = resolvePlaylistContext(item, selectedIds, lists)
+    selectedIds = context.map((list) => list.id)
+    anchor = context.length ? item?.id ?? null : null
+    void menu.show(item, position, context)
   }
 </script>
 
@@ -129,6 +135,14 @@
         } else if (event.key === 'Escape') {
           selectedIds = []
           anchor = null
+        } else if (isPlaylistDeleteShortcut(event.key, selectedItems.length, busy)) {
+          // Only run from the focused playlist panel, not an unrelated input
+          // or a portal menu. Delete shares the exact batch-delete pathway.
+          if (event.target instanceof HTMLElement &&
+              event.target.closest('input, textarea, [contenteditable], [role="textbox"]')) return
+          event.preventDefault()
+          event.stopPropagation()
+          void batch('remove')
         }
       }}
     >
@@ -190,6 +204,7 @@
 </div>
 <Menu
   bind:this={menu}
+  onbatchaction={(action, targets) => { void batch(action, targets) }}
   onhide={() => {
     activeIndex = -1
   }}

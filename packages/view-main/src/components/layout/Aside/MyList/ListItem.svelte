@@ -57,7 +57,15 @@
         break
     }
   }}
-  onclick={(event) => { if (!onactivate?.(event)) handleSelect() }}
+  onclick={(event) => {
+    if (onactivate?.(event)) {
+      // Keep keyboard focus inside the sidebar for the Delete shortcut.
+      // Drag/sort handlers may otherwise prevent the normal click focus.
+      event.currentTarget.focus({ preventScroll: true })
+    } else {
+      handleSelect()
+    }
+  }}
   {oncontextmenu}
 >
   <div class="left" style={picStyle}>
