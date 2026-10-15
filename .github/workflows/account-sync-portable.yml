@@ -36,10 +36,16 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Build legacy test fixtures (not included in .alix)
         run: npm run build:helper
-      - name: Set up extension signing key
-        run: node scripts/signing-key.mjs
-      - name: Build signed .alix
-        run: npm run build:extension
+      - name: Build signed .alix with pinned publisher identity
+        env:
+          PRI_KEY: ${{ secrets.PRI_KEY }}
+          PUB_KEY: ${{ secrets.PUB_KEY }}
+        run: |
+          if [ -z "$PRI_KEY" ] || [ -z "$PUB_KEY" ]; then
+            echo "Publisher signing keys are missing; refusing to generate random keys."
+            exit 1
+          fi
+          npm run build:extension
       - name: Run automated tests
         run: npm test
       - name: Copy distributable
@@ -49,8 +55,8 @@ jobs:
       - name: Upload installable extension
         uses: actions/upload-artifact@v4
         with:
-          name: account-sync-portable-v0.3.3
-          path: extensions/account-sync/releases/hona-account-sync_v0.3.3.alix
+          name: account-sync-portable-v0.3.4
+          path: extensions/account-sync/releases/hona-account-sync_v0.3.4.alix
           retention-days: 14
           if-no-files-found: error
       - name: Publish signed plugin to source branch
@@ -58,6 +64,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/hona-account-sync_v0.3.3.alix
-          git diff --cached --quiet || git commit -m "build(extension): publish signed account sync v0.3.3"
+          git add releases/hona-account-sync_v0.3.4.alix
+          git diff --cached --quiet || git commit -m "build(extension): publish signed account sync v0.3.4"
           git push

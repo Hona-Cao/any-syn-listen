@@ -102,7 +102,19 @@ export class PortableClient {
       const code=await this.api.app.showInputDialog({title,placeholder:'短信验证码',password:true,
         validateInput:async v=>/^\d{4,8}$/.test(v)?null:'验证码格式不正确'})
       if(!code)return false
-      const credential=await provider.loginSms(phone,code)
+      let credential
+      try{
+        credential=await provider.loginSms(phone,code)
+      }catch(error){
+        if(platform!=='kugou'||Number(error?.platformCode)!==20006)throw error
+        const answer=await this.api.app.showMessage(
+          '酷狗验证码提交未通过校验（20006），是否改用酷狗音乐 App 扫码登录？',{
+            modal:true,buttons:[{text:'取消'},{text:'酷狗扫码登录'}]
+          })
+        if(answer!==1)throw error
+        credential=await provider.loginQR(onStatus)
+        if(!credential)return false
+      }
       this.credentials[platform]=platform==='netease'?credential.cookie:credential
     }
     await this.save()

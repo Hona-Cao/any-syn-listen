@@ -81,7 +81,7 @@ export class QQAccount {
       try{
         result=await platformRequest(this.api,
           'https://lp.open.weixin.qq.com/connect/l/qrconnect?uuid='+encodeURIComponent(uuid)+'&_='+Date.now(),
-          {method:'GET',timeout:12000})
+          {method:'GET',timeout:12000,headers:{Referer:'https://open.weixin.qq.com/'}})
       }catch{
         networkFailures++
         if(networkFailures>=4)throw new Error('微信扫码状态无法查询，请检查网络或代理后重试')
@@ -89,11 +89,21 @@ export class QQAccount {
       }
       networkFailures=0
       const body=typeof result.body==='string'?result.body:''
-      const match=/window\.wx_errcode=(\d+);window\.wx_code='([^']*)'/.exec(body)
-      if(!match)continue
-      if(match[1]==='200' && match[2]){code=match[2];break}
-      if(match[1]==='405')onStatus('scanned')
-      if(match[1]==='402'||match[1]==='403')throw new Error('微信授权已取消或二维码已过期')
+      const match=/window\.wx_errcode\s*=\s*(\d+)\s*;\s*window\.wx_code\s*=\s*(['"])(.*?)\2/.exec(body)
+      if(!match)throw new Error('QQ音乐扫码状态返回无法识别，请稍后再试')
+      // Tencent WX QR protocol: 408 waiting; 404 scanned; 405 confirmed.
+      // The old code treated 405 as scanned and never advanced to login.
+      const status=Number(match[1])
+      if(status===405 || status===200){
+        if(!match[3])throw new Error('微信扫码已确认，但授权信息为空，请重新扫码')
+        code=match[3]
+        break
+      }
+      if(status===404){onStatus('scanned');continue}
+      if(status===408)continue
+      if(status===402)throw new Error('微信二维码已过期，请重新扫码')
+      if(status===403)throw new Error('微信登录已被取消')
+      throw new Error('QQ音乐扫码状态暂时无法识别（'+String(status)+'）')
     }
     if(!code)throw new Error('微信扫码在 90 秒内未完成授权，请重试')
     onStatus('validating')

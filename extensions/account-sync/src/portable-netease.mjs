@@ -31,7 +31,9 @@ export async function wyRequest(api, route, cookie='', data={}, acceptedCodes=[2
     }
   })
   if (!response.body || !acceptedCodes.includes(Number(response.body.code)))
-    throw new Error('网易云请求失败：'+String(response.body?.code ?? '未知'))
+    throw new Error('网易云 '+route+' 请求失败'+
+      (response.body?.code!=null?'（'+String(response.body.code).slice(0,12)+'）':
+        '（接口未返回有效 JSON）'))
   return response
 }
 export const convertWYSong = (s) => {
@@ -51,8 +53,18 @@ export class NetEaseAccount {
   async loginQR(onStatus=()=>{}) {
     // QR authorization is completed by NetEase servers. No browser Cookie
     // inspection, external daemon or manual session copy is required.
-    const response=await wyRequest(this.api,'login/qrcode/unikey','',{type:3})
-    const key=String(response.body?.data?.unikey??response.body?.unikey??'')
+    const {body:qrBody}=await platformRequest(this.api,
+      'https://music.163.com/api/login/qrcode/unikey?type=3',{
+        method:'GET',headers:{
+          Referer:'https://music.163.com/',
+          'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0 Safari/537.36'
+        }
+      })
+    if(Number(qrBody?.code)!==200){
+      const code=qrBody?.code
+      throw new Error('网易云二维码申请失败'+(code==null?'（接口没有返回有效数据）':'（'+String(code)+'）'))
+    }
+    const key=String(qrBody?.data?.unikey??qrBody?.unikey??'')
     if(!/^[a-zA-Z0-9_-]{8,128}$/.test(key))
       throw new Error('网易云暂时无法生成登录二维码，请稍后重试')
     const loginURL='https://music.163.com/login?codekey='+encodeURIComponent(key)
@@ -70,14 +82,19 @@ export class NetEaseAccount {
       await wait(2000)
       let poll
       try {
-        poll=await wyRequest(this.api,'login/qrcode/client/login','',{key,type:3},
-          [800,801,802,803])
+        poll=await platformRequest(this.api,
+          'https://music.163.com/api/login/qrcode/client/login?key='+encodeURIComponent(key)+'&type=3',{
+            method:'GET',headers:{Referer:'https://music.163.com/',
+              'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0 Safari/537.36'}
+          })
         failures=0
       }catch{
         if(++failures>=3)throw new Error('网易云扫码状态查询失败，请检查网络后重试')
         continue
       }
-      const status=Number(poll.body.code)
+      const status=Number(poll.body?.code)
+      if(![800,801,802,803].includes(status))
+        throw new Error('网易云扫码状态异常'+(Number.isFinite(status)?'（'+status+'）':'（响应数据为空）'))
       if(status===800)throw new Error('网易云二维码已过期，请重新登录')
       if(status===802){onStatus('scanned');continue}
       if(status===801)continue

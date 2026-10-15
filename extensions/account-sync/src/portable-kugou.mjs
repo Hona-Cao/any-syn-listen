@@ -65,7 +65,9 @@ export class KugouAccount {
       const detail=Number(code)===20017?'验证码错误或已过期':
         Number(code)===20010?'请求过于频繁':
         '服务端拒绝请求（状态 '+String(code).slice(0,10)+'）'
-      throw new Error(context+'：'+detail)
+      const err=new Error(context+'：'+detail)
+      err.platformCode=Number(code)
+      throw err
     }
     return Array.isArray(resp.data)?{items:resp.data}:asObject(resp.data)
   }
@@ -128,6 +130,52 @@ export class KugouAccount {
     if(!/^\d{1,20}$/.test(account.userId)||!account.token)throw new Error('酷狗未返回有效登录凭据')
     this.pending.delete(phone)
     return account
+  }
+  async loginQR(onStatus=()=>{}){
+    // Use Kugou's own authenticated-device QR authorization rather than
+    // guessing what an undocumented SMS status such as 20006 means.
+    const mid=await this.randomHex(16)
+    const qr=await this.request('/v2/qrcode',mid,{
+      appid:1001,plat:4,srcappid:2919,type:1,
+      qrcode_txt:'https://h5.kugou.com/apps/loginQRCode/html/index.html?appid=1005&'
+    },null,{login:true})
+    const key=String(qr.qrcode??'')
+    if(!/^[A-Za-z0-9_-]{8,300}$/.test(key))
+      throw new Error('酷狗未返回有效的登录二维码')
+    const url='https://h5.kugou.com/apps/loginQRCode/html/index.html?qrcode='+encodeURIComponent(key)
+    onStatus('authorizing')
+    const selected=await this.api.app.showMessage('请用酷狗音乐 App 扫描并确认网页登录。',{
+      modal:true,buttons:[{text:'取消'},{text:'打开酷狗登录二维码',link:url}]
+    })
+    if(selected!==1)return null
+    const until=Date.now()+120000
+    let failures=0
+    while(Date.now()<until){
+      await new Promise(resolve=>setTimeout(resolve,2200))
+      let data
+      try{
+        data=await this.request('/v2/get_userinfo_qrcode',mid,{
+          appid:1005,plat:4,srcappid:2919,qrcode:key
+        },null,{login:true})
+        failures=0
+      }catch(e){
+        if(++failures>=3)throw new Error('酷狗扫码状态无法查询，请检查网络后重试')
+        continue
+      }
+      const status=Number(data.status)
+      if(status===0)throw new Error('酷狗二维码已过期')
+      if(status===1)continue
+      if(status===2){onStatus('scanned');continue}
+      if(status===4){
+        onStatus('validating')
+        const userId=stringOf(data.userid??data.user_id),token=stringOf(data.token)
+        if(!/^\d{1,20}$/.test(userId)||!token)
+          throw new Error('酷狗已确认登录，但未返回有效账号凭据')
+        return {userId,token,mid}
+      }
+      throw new Error('酷狗扫码状态无法识别（'+String(status)+'）')
+    }
+    throw new Error('酷狗扫码超时，请重新登录')
   }
   async enrich(rows){
     const missing=[]

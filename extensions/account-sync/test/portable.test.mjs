@@ -305,15 +305,15 @@ test('NetEase native QR obtains a session automatically after phone approval',as
  assert.deepEqual(states,['authorizing','validating'])
  assert.ok(h.dialogs[0][1].buttons.some(x=>x.link==='https://music.163.com/login?codekey=exampleLoginKey123456'))
  assert.deepEqual(hits,[
-   '/weapi/login/qrcode/unikey',
-   '/weapi/login/qrcode/client/login',
+   '/api/login/qrcode/unikey',
+   '/api/login/qrcode/client/login',
    '/weapi/nuser/account/get'
  ])
  assert.equal(h.smsCount(),0)
 })
 test('cancelled NetEase QR does not poll, send SMS or store a credential',async()=>{
  const h=makeApi(url=>{
-   if(String(url).endsWith('/login/qrcode/unikey'))
+   if(String(url).includes('/login/qrcode/unikey'))
      return reply({code:200,data:{unikey:'anotherLoginKey987654'}})
    throw Error('Cancelled login must not poll')
  })
@@ -321,4 +321,78 @@ test('cancelled NetEase QR does not poll, send SMS or store a credential',async(
  const response=await new NetEaseAccount(h.api).loginQR()
  assert.equal(response,null)
  assert.equal(h.smsCount(),0)
+})
+
+test('QQ 微信状态 404 是待确认，405 已授权并立刻换取 QQ 登录态',async()=>{
+  const statuses=['408','404','405'],observed=[]
+  const h=makeApi((url,opts)=>{
+    const route=new URL(url).pathname
+    if(route==='/connect/qrconnect')
+      return reply('<html>uuid=wx_real_status_abcdefghijk"</html>')
+    if(route==='/connect/l/qrconnect'){
+      const code=statuses.shift()
+      observed.push(code)
+      assert.equal(opts.headers.Referer,'https://open.weixin.qq.com/')
+      return reply("window.wx_errcode="+code+";window.wx_code='"+(code==='405'?'confirmed-wx-code':'')+"'")
+    }
+    if(route==='/cgi-bin/musicu.fcg'){
+      const request=opts.json['music.login.LoginServer']
+      assert.equal(request.param.code,'confirmed-wx-code')
+      return reply({code:0,'music.login.LoginServer':{code:0,data:{
+        musicid:'12345678',musickey:'W_Xsigned-in'
+      }}})
+    }
+    throw Error('Unexpected QR endpoint '+route)
+  })
+  const states=[]
+  const result=await new QQAccount(h.api).loginWX(state=>states.push(state))
+  assert.equal(result.musicId,'12345678')
+  assert.deepEqual(observed,['408','404','405'])
+  assert.deepEqual(states,['authorizing','authorizing','scanned','validating'])
+})
+test('QQ confirmed WX authorization without code fails immediately instead of hanging',async()=>{
+  const h=makeApi(url=>{
+    const route=new URL(url).pathname
+    if(route==='/connect/qrconnect')return reply('uuid=wx_confirm_without_code_aabbcc"')
+    if(route==='/connect/l/qrconnect')
+      return reply("window.wx_errcode=405;window.wx_code=''")
+    throw Error('Must not exchange empty auth code')
+  })
+  await assert.rejects(new QQAccount(h.api).loginWX(),/已确认.*授权信息为空/)
+})
+test('NetEase QR application rejects empty public API response with useful explanation',async()=>{
+  const h=makeApi(url=>{
+    if(String(url).includes('/api/login/qrcode/unikey'))return reply('')
+    throw Error('No polling permitted')
+  })
+  await assert.rejects(new NetEaseAccount(h.api).loginQR(),/二维码申请失败.*有效数据/)
+})
+test('Kugou SMS error 20006 offers a QR fallback without storing verification codes',async()=>{
+  const endpoints=[]
+  let inputs=0
+  const h=makeApi((url,opts)=>{
+    const path=new URL(url).pathname
+    endpoints.push(path)
+    if(path==='/v7/send_mobile_code')return reply({status:1,data:{status:1}})
+    if(path==='/v7/login_by_verifycode')
+      return reply({status:0,error_code:20006,details:'Sensitive token should stay hidden'})
+    if(path==='/v2/qrcode')
+      return reply({status:1,data:{qrcode:'kugou-qr-demo-aabbccdd'}})
+    if(path==='/v2/get_userinfo_qrcode')
+      return reply({status:1,data:{status:4,userid:'55555',token:'fixture-kugou-token'}})
+    throw Error('Unexpected Kugou endpoint '+path)
+  })
+  h.api.app.showInputDialog=async()=>{
+    return ++inputs===1?'13800002345':'123456'
+  }
+  const account=new PortableClient(h.api)
+  const ok=await account.login('kugou',()=>{})
+  assert.equal(ok,true)
+  assert.ok(account.isConnected('kugou'))
+  assert.equal(account.credentials.kugou.token,'fixture-kugou-token')
+  assert.deepEqual(endpoints,['/v7/send_mobile_code','/v7/login_by_verifycode',
+    '/v2/qrcode','/v2/get_userinfo_qrcode'])
+  assert.ok(h.dialogs.some(([message,opts])=>String(message).includes('20006')&&opts?.buttons))
+  assert.ok(h.dialogs.some(([message,opts])=>opts?.buttons?.some(b=>b.link?.startsWith('https://h5.kugou.com/'))))
+  assert.ok(!h.files.get('portable-accounts.json').includes('123456'))
 })
