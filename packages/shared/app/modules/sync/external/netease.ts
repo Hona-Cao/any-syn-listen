@@ -1,4 +1,6 @@
 import type { MirrorPlaylist } from './mirror'
+// @ts-ignore Node type-strip test imports require an explicit TypeScript extension.
+import { addOptionalDailyHistory } from './dailyHistory.ts'
 // @ts-ignore Native Node.js type-strip tests need an explicit TS extension; Vite resolves it.
 import { getNeteaseAccountId, requestNetease } from './neteaseSession.ts'
 
@@ -95,12 +97,12 @@ export const readNeteaseAccountPlaylists = async (cookie: string): Promise<{ uid
   const daily = await post<{ code: number; data?: { dailySongs?: Song[] } }>(
     'v3/discovery/recommend/songs', cookie, { offset: 0, total: true, limit: 30 }
   )
-  if (daily.data?.dailySongs) {
+  if (Array.isArray(daily.data?.dailySongs) && daily.data.dailySongs.length) {
     mirrors.push({ key: 'daily', name: '网易云·每日推荐', list: daily.data.dailySongs.map(convert) })
   }
   return { uid, lists: mirrors }
 }
-export const syncNeteaseDaily = async (cookie: string) => {
+export const syncNeteaseDaily = async (cookie: string, saveHistory = false) => {
   if (!/(?:^|;\s*)MUSIC_U=/.test(cookie)) throw new Error('网易云账号未登录')
   const uid = await getNeteaseAccountId(cookie)
   const daily = await post<{ code: number; data?: { dailySongs?: Song[] } }>(
@@ -110,12 +112,12 @@ export const syncNeteaseDaily = async (cookie: string) => {
     throw new Error('网易云每日推荐暂不可用；保留已有推荐')
   }
   const { applyExternalMirrors } = await import('./mirror')
-  return applyExternalMirrors('netease:' + uid, [
+  return applyExternalMirrors('netease:' + uid, addOptionalDailyHistory([
     { key: 'daily', name: '网易云·每日推荐', list: daily.data.dailySongs.map(convert) },
-  ])
+  ], saveHistory))
 }
-export const syncNeteaseAccount = async (cookie: string) => {
+export const syncNeteaseAccount = async (cookie: string, saveHistory = false) => {
   const { uid, lists } = await readNeteaseAccountPlaylists(cookie)
   const { applyExternalMirrors } = await import('./mirror')
-  return applyExternalMirrors('netease:' + uid, lists)
+  return applyExternalMirrors('netease:' + uid, addOptionalDailyHistory(lists, saveHistory))
 }

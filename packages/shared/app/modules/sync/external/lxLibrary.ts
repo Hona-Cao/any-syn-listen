@@ -43,6 +43,10 @@ export const parseLXDocument = (content: string): LXRawDocument => {
   const parsed: unknown = JSON.parse(content)
   if (!object(parsed) || !object(parsed.data)) throw new Error('LX-N: invalid playlists.json document')
   const data = parsed.data
+  if ('lastModified' in parsed &&
+      (typeof parsed.lastModified !== 'number' || !Number.isSafeInteger(parsed.lastModified) || parsed.lastModified < 0)) {
+    throw new Error('LX-N: invalid lastModified timestamp')
+  }
   if (!Array.isArray(data.defaultList) || !Array.isArray(data.loveList) || !Array.isArray(data.userList)) {
     throw new Error('LX-N: missing complete playlist arrays')
   }
@@ -79,9 +83,19 @@ const toRawSong = (song: LXLocalList['songs'][number]): LXRawSong => {
   }
 }
 const updateSongs = (original: LXRawSong[], changed: LXLocalList['songs']): LXRawSong[] => {
-  const originalIds = original.map(song => song.id)
+  const representable = (song: LXRawSong) =>
+    Boolean(song.id && song.name && song.source !== 'local' &&
+      /^[a-z][a-z0-9_-]{0,30}$/i.test(song.source || song.id.split('_')[0]))
+  const visibleOriginal = original.filter(representable)
+  const originalIds = visibleOriginal.map(song => song.id)
   const changedIds = changed.map(song => song.id)
   const sameOrder = JSON.stringify(originalIds) === JSON.stringify(changedIds)
+  // Duplicate source IDs can be legitimate in Android lists, but the AnyListen
+  // mirror deduplicates them. Never reinterpret a de-duplicated mirror as an
+  // intended removal of duplicate entries.
+  if (!sameOrder && new Set(originalIds).size !== originalIds.length) {
+    throw new Error('LX-N: duplicate source song IDs make write-back ambiguous')
+  }
   const patchSong = (originalSong: LXRawSong, song: LXLocalList['songs'][number]): LXRawSong => {
     // Keep the original LX metadata (including quality/source identifiers).
     // Changes to song display fields are allowed without losing metadata.
@@ -90,10 +104,19 @@ const updateSongs = (original: LXRawSong[], changed: LXLocalList['songs']): LXRa
         (originalSong.interval ?? null) === song.interval) return originalSong
     return { ...originalSong, name: song.name, singer: song.singer, interval: song.interval }
   }
-  if (sameOrder) return original.map((item, index) => patchSong(item, changed[index]))
-  // If any source song was not representable by the mirror, a user edit must
-  // not silently drop it. Abort rather than corrupt a mixed local/online list.
-  if (original.some(song => song.source === 'local' || !song.id || !song.name)) {
+  if (sameOrder) {
+    // Preserve Android-only local tracks in their original positions even
+    // when the desktop mirror omits them. Unrelated playlist deletions should
+    // still be able to sync without losing any unrepresentable songs.
+    const byId = new Map(changed.map(song => [song.id, song]))
+    return original.map(item => {
+      const song = byId.get(item.id)
+      return song && representable(item) ? patchSong(item, song) : item
+    })
+  }
+  // A reordered/edited visible subset amidst opaque mobile-only songs can
+  // be ambiguous; forbid such a write rather than silently dropping files.
+  if (original.some(song => !representable(song))) {
     throw new Error('LX-N: list contains local/unsupported source songs; write-back refused')
   }
   const byId = new Map(original.map(song => [song.id, song]))
@@ -119,12 +142,19 @@ export const materializeLXDocument = (original: LXRawDocument, local: LXLocalLis
   const users: LXRawUserList[] = []
   for (const mirror of local) {
     if (mirror.key === 'default' || mirror.key === 'love') continue
+    if (!mirror.key.startsWith('user:') || mirror.key.slice(5).length === 0) {
+      throw new Error('LX-N: invalid user playlist identity')
+    }
     const source = originalUsers.get(mirror.key)
-    if (!source) throw new Error('LX-N: unknown original user list ' + mirror.key)
+    // Only an intentionally marked LX mirror can reach this branch. New
+    // user lists use the internal stable ID as their source identifier.
+    const base: LXRawUserList = source ?? {
+      id: mirror.key.slice(5), name: '', list: [],
+    }
     users.push({
-      ...source,
+      ...base,
       name: mirror.name.startsWith('LX N · ') ? mirror.name.slice('LX N · '.length) : mirror.name,
-      list: updateSongs(source.list, mirror.songs),
+      list: updateSongs(base.list, mirror.songs),
     })
   }
   return {

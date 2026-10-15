@@ -54,6 +54,7 @@
   let qqMessage = $state('')
   let qqLoginBusy = $state(false)
   let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
+  let dailySaveHistory = $state(settingState.setting['sync.daily.saveHistory'])
   let kugouMessage = $state('')
   let kugouLoginBusy = $state(false)
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
@@ -288,6 +289,16 @@
 {#if import.meta.env.VITE_IS_DESKTOP}
   <TitleContent name="音乐平台账号">
     <div class="settings-item-content">
+      <div class="gap-top">
+        <Checkbox label="保存每日推荐历史（每天自动归档一份）"
+          id="sync.daily.saveHistory"
+          checked={dailySaveHistory}
+          onchange={(val) => {
+            dailySaveHistory = val
+            void updateSetting({ 'sync.daily.saveHistory': val })
+          }}
+        />
+      </div>
       <div class="account-line">
         <span class="account-platform">网易云音乐</span>
         <Btn

@@ -1,5 +1,6 @@
 import { MEDIA_FILE_TYPES_LOCAL } from '@any-listen/common/constants'
-import { updateUserList } from '@/modules/musicLibrary/store/listRemoteActions'
+import { updateUserList, createUserList } from '@/modules/musicLibrary/store/listRemoteActions'
+import { generateIdSimple } from '@/shared'
 
 import { showSimpleConfirmModal } from '@/components/apis/dialog'
 import { showNotify } from '@/components/apis/notify'
@@ -108,6 +109,34 @@ export const syncUserList = async (listInfo: AnyListen.List.MyListInfo) => {
       setFetchingListStatus(listInfo.id, false)
     })
   showNotify(i18n.t('user_list__sync_successful', { name: listInfo.name }))
+}
+
+/**
+ * Create a genuine writable LX-N user list, not a native AnyListen list.
+ * Do not create a source mirror before the first remote-authoritative import.
+ */
+export const createLXUserList = async (): Promise<string> => {
+  const config = settingState.setting
+  if (!config['sync.lxWebdav.enable'] || !config['sync.lxWebdav.writeEnable'] ||
+      !config['sync.lxWebdav.writeInitialized'] || !config['sync.lxWebdav.baseline']) {
+    throw new Error('请先启用 LX-N 双向同步并完成首次 WebDAV 同步')
+  }
+  const id = generateIdSimple()
+  const folder = '/' + (config['sync.lxWebdav.path'] || '/LX_Music/').replace(/^\/+|\/+$/g, '')
+  const now = Date.now()
+  const info: AnyListen.List.GeneralListInfo = {
+    id,
+    name: 'LX N · 新建歌单',
+    type: 'general',
+    parentId: null,
+    meta: {
+      externalMirror: 'lx-webdav:' + folder + ':user:' + id,
+      createTime: now, updateTime: now, posTime: now,
+      playCount: 0, songCount: 0, pic: '', desc: '',
+    } as AnyListen.List.UserListInfoByGeneralMeta,
+  }
+  await createUserList({ position: -1, listInfos: [info] })
+  return id
 }
 
 type DecoratedList = AnyListen.List.GeneralListInfo & {

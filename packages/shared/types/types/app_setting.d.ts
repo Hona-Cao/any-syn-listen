@@ -623,6 +623,8 @@ declare global {
       'sync.netease.cookie': string
       'sync.qq.enable': boolean
       'sync.kugou.enable': boolean
+      /** Save a frozen, archived snapshot for each provider's daily recommendation day. */
+      'sync.daily.saveHistory': boolean
 
       /** 备份路径 */
       'backup.backupPath': string

@@ -102,11 +102,11 @@ const syncOtherOne = async (key: 'qq' | 'kugou', forced = false, dailyOnly = fal
   start(key)
   try {
     if (key === 'qq') {
-      if (dailyOnly) await syncQQMusicDaily(credential as QQMusicCredential)
-      else await syncQQMusicAccount(credential as QQMusicCredential)
+      if (dailyOnly) await syncQQMusicDaily(credential as QQMusicCredential, settings['sync.daily.saveHistory'])
+      else await syncQQMusicAccount(credential as QQMusicCredential, settings['sync.daily.saveHistory'])
     } else {
-      if (dailyOnly) await syncKugouDaily(credential as KugouAccount)
-      else await syncKugouAccount(credential as KugouAccount)
+      if (dailyOnly) await syncKugouDaily(credential as KugouAccount, settings['sync.daily.saveHistory'])
+      else await syncKugouAccount(credential as KugouAccount, settings['sync.daily.saveHistory'])
     }
     if (!dailyOnly) status.lastSync = Date.now()
     succeed(key)
@@ -167,9 +167,9 @@ const syncNeteaseIfDue = async (forced = false, dailyOnly = false) => {
         console.warn('[NetEase] Session refresh unavailable; using existing session')
       }
     }
-    if (dailyOnly) await syncNeteaseDaily(cookie)
+    if (dailyOnly) await syncNeteaseDaily(cookie, settings['sync.daily.saveHistory'])
     else {
-      await syncNeteaseAccount(cookie)
+      await syncNeteaseAccount(cookie, settings['sync.daily.saveHistory'])
       neteaseLastSync = Date.now()
     }
     reauthNotified = false

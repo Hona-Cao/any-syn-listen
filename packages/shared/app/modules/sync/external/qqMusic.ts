@@ -1,4 +1,6 @@
 import type { MirrorPlaylist } from './mirror'
+// @ts-ignore Node type-strip test imports require an explicit TypeScript extension.
+import { addOptionalDailyHistory } from './dailyHistory.ts'
 
 /**
  * QQ Music read-only account adapter. Request format follows qqmusic-api and
@@ -278,16 +280,16 @@ export const readQQMusicPlaylists = async (credential: QQMusicCredential): Promi
   if (!lists.length) throw new Error('QQ 音乐已登录，但暂时无法获取歌单或推荐，请稍后重试')
   return lists
 }
-export const syncQQMusicDaily = async (credential: QQMusicCredential) => {
+export const syncQQMusicDaily = async (credential: QQMusicCredential, saveHistory = false) => {
   const daily = await getQQDaily(credential)
   if (!daily) throw new Error('QQ 每日推荐暂不可用；保留已有推荐')
   const { applyExternalMirrors } = await import('./mirror')
-  return applyExternalMirrors('qqmusic:' + credential.musicId, [daily])
+  return applyExternalMirrors('qqmusic:' + credential.musicId, addOptionalDailyHistory([daily], saveHistory))
 }
-export const syncQQMusicAccount = async (credential: QQMusicCredential) => {
+export const syncQQMusicAccount = async (credential: QQMusicCredential, saveHistory = false) => {
   const lists = await readQQMusicPlaylists(credential)
   const { applyExternalMirrors } = await import('./mirror')
-  return applyExternalMirrors('qqmusic:' + credential.musicId, lists)
+  return applyExternalMirrors('qqmusic:' + credential.musicId, addOptionalDailyHistory(lists, saveHistory))
 }
 
 /** Validates account credentials without importing or mutating any playlist. */

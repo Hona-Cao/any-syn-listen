@@ -9,7 +9,9 @@
   import { defaultLists, useUserList } from '@/modules/musicLibrary/reactive.svelte'
   import type { ComponentExports } from 'svelte'
   import { sortable } from '@/shared/compositions/sortable.svelte'
-  import { archiveUserLists, removeUserLists, restoreHiddenMirrors, updateUserListPosition } from './action'
+  import { archiveUserLists, createLXUserList, removeUserLists, restoreHiddenMirrors, updateUserListPosition } from './action'
+  import { showListEditModal } from '@/components/apis/listEditModal'
+  import { settingState } from '@/modules/setting/store/state'
   import Btn from '@/components/base/Btn.svelte'
   import { showNotify } from '@/components/apis/notify'
   // console.log(params)
@@ -27,6 +29,22 @@
   let selectedIds = $state<string[]>([])
   let anchor = $state<string | null>(null)
   let busy = $state(false)
+  const lxWritable = $derived(
+    settingState.setting['sync.lxWebdav.enable'] &&
+    settingState.setting['sync.lxWebdav.writeEnable']
+  )
+  const newLXList = async () => {
+    if (busy) return
+    busy = true
+    try {
+      const id = await createLXUserList()
+      await showListEditModal(id, true)
+    } catch (err) {
+      showNotify('创建 LX-N 歌单失败：' + (err as Error).message)
+    } finally {
+      busy = false
+    }
+  }
   const archiveCount = $derived(userLists.val.filter(isHidden).length)
   const lists = $derived([
     ...$defaultLists,
@@ -123,6 +141,11 @@
           <Btn min disabled={busy} onclick={() => { selectedIds = [] }}>清除选择</Btn>
         </div>
       {/if}
+      {#if lxWritable}
+        <div class="lx-create">
+          <Btn min disabled={busy} onclick={newLXList}>+ 新建 LX-N 歌单</Btn>
+        </div>
+      {/if}
       {#if archiveCount}
         <button class="archive-toggle" onclick={() => {
           showArchived = !showArchived
@@ -187,6 +210,9 @@
   .list-item {
     padding: 0 6px;
     -webkit-user-drag: revert-layer;
+  }
+  .lx-create {
+    padding: 4px 6px;
   }
   .batch-bar {
     display: flex;

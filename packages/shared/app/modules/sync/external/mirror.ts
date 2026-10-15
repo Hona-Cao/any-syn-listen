@@ -55,6 +55,9 @@ export const applyExternalMirrors = async (namespace: string, playlists: MirrorP
     // The same list can be read again without generating extra DB writes.
     const name = playlist.name.slice(0, 100)
     let current = owned.get(marker)
+    // A dated account history is a snapshot: never replace a saved day's
+    // songs when "refresh daily" changes the dynamic current recommendation.
+    if (current && playlist.key.startsWith('daily-history:')) continue
     if (!current) {
       current = {
         id: generateId(),

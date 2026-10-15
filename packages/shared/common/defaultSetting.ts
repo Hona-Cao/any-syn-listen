@@ -135,6 +135,7 @@ const defaultSetting: AnyListen.AppSetting = {
   'sync.netease.cookie': '',
   'sync.qq.enable': false,
   'sync.kugou.enable': false,
+  'sync.daily.saveHistory': false,
 
   'backup.backupPath': '',
 

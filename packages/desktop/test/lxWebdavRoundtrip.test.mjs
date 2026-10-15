@@ -132,3 +132,44 @@ test('edits to existing songs survive adding another song to the same list', () 
   assert.deepEqual(result.data.defaultList.map(s => s.name), ['改名后的试听', '新增'])
   assert.deepEqual(result.data.defaultList[0].meta, doc.data.defaultList[0].meta)
 })
+
+test('unrelated playlist deletion does not remove Android-only listening tracks', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  doc.data.defaultList.push({ id: 'local_001', name: '手机本地音乐', source: 'local', meta: { path: '/android/file.flac' } })
+  const local = localFrom(doc)
+  // The mirror genuinely does not contain the Android local-only track.
+  local.find(item => item.key === 'default').songs.pop()
+  const next = materializeLXDocument(doc, local.filter(item => item.key !== 'user:old'), 9000)
+  assert.equal(next.data.defaultList.length, 2)
+  assert.equal(next.data.defaultList[1].id, 'local_001')
+  assert.equal(next.data.defaultList[1].meta.path, '/android/file.flac')
+  assert.deepEqual(next.data.userList.map(item => item.id), ['new'])
+})
+
+test('invalid remote timestamps are rejected before write-back', () => {
+  const doc = source()
+  doc.lastModified = '2026-yesterday'
+  assert.throws(() => parseLXDocument(JSON.stringify(doc)), /invalid lastModified/)
+})
+test('deduplicated desktop song mirrors cannot truncate duplicate LX source songs', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  doc.data.loveList.push({ ...doc.data.loveList[0] })
+  const local = localFrom(doc)
+  local.find(item => item.key === 'love').songs.pop()
+  assert.throws(() => materializeLXDocument(doc, local, 5500), /duplicate source song IDs/)
+})
+
+test('new desktop LX user playlists receive a stable LX id and roundtrip', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  const local = localFrom(doc)
+  local.push({ key: 'user:new-from-desktop', name: 'LX N · 我的新歌单', songs: [] })
+  const result = materializeLXDocument(doc, local, 10000)
+  assert.deepEqual(result.data.userList.map(item => item.id), ['old', 'new', 'new-from-desktop'])
+  assert.deepEqual(result.data.userList.at(-1), { id: 'new-from-desktop', name: '我的新歌单', list: [] })
+  assert.equal(parseLXDocument(JSON.stringify(result)).data.userList.length, 3)
+})
+test('unknown malformed LX mirror keys refuse writeback', () => {
+  const doc = parseLXDocument(JSON.stringify(source()))
+  assert.throws(() => materializeLXDocument(doc,
+    [...localFrom(doc), { key: 'not-an-lx-playlist', name: '非法', songs: [] }], 2000), /invalid user playlist/)
+})
