@@ -5,3 +5,6 @@ helper-dist/
 release/
 .env
 *.log
+
+*.log
+release/

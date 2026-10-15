@@ -1,6 +1,6 @@
 {
   "name": "anylisten-account-sync",
-  "version": "0.1.0",
+  "version": "0.3.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,5 +13,8 @@
     "electron": "42.11.12",
     "esbuild": "0.28.2"
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "crypto-js": "4.2.0"
+  }
 }

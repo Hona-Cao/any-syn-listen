@@ -1,0 +1,69 @@
+name: Account sync portable plugin
+
+on:
+  push:
+    branches:
+      - feat/native-account-extension
+    paths:
+      - '.github/workflows/account-sync-portable.yml'
+      - 'extensions/account-sync/config.ts'
+      - 'extensions/account-sync/package.json'
+      - 'extensions/account-sync/package-lock.json'
+      - 'extensions/account-sync/src/**'
+      - 'extensions/account-sync/test/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extensions/account-sync
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: extensions/account-sync/package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build legacy test fixtures (not included in .alix)
+        run: npm run build:helper
+      - name: Build signed .alix with pinned publisher identity
+        env:
+          PRI_KEY: ${{ secrets.PRI_KEY }}
+          PUB_KEY: ${{ secrets.PUB_KEY }}
+        run: |
+          if [ -z "$PRI_KEY" ] || [ -z "$PUB_KEY" ]; then
+            echo "Publisher signing keys are missing; refusing to generate random keys."
+            exit 1
+          fi
+          npm run build:extension
+      - name: Run automated tests
+        run: npm test
+      - name: Copy distributable
+        run: |
+          mkdir -p releases
+          cp -f build/*.alix releases/
+      - name: Upload installable extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-sync-portable-v0.3.4
+          path: extensions/account-sync/releases/hona-account-sync_v0.3.4.alix
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish signed plugin to source branch
+        if: github.ref == 'refs/heads/feat/native-account-extension'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/hona-account-sync_v0.3.4.alix
+          git diff --cached --quiet || git commit -m "build(extension): publish signed account sync v0.3.4"
+          git push

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {SyncEngine,selectableLists} from '../src/engine.mjs'
 import {Relay} from '../helper/relay.mjs'
-import {Selection} from '../helper/ui/selection.mjs'
+import {Selection} from '../src/selection.mjs'
 const song=(id='wy_1')=>({id,name:'test',singer:'singer',interval:'02:00',isLocal:false,meta:{source:'wy',musicId:id,albumName:'album'}})
 function harness(){const files=new Map(),lists=new Map(),musics=new Map(),actions=[];const api={logcat:{warn(){}},utils:{crypto:{sha256:async value=>createHash('sha256').update(value).digest('hex')}},storage:{fileExists:async key=>files.has(key),readFile:async key=>{if(!files.has(key))throw new Error('Missing file');return files.get(key)},writeFile:async(key,data)=>{files.set(key,data)}},musicList:{getAllUserLists:async()=>({userList:[...lists.values()]}),getListMusics:async id=>musics.get(id)??[],listAction:async action=>{actions.push(action);const d=action.data;if(action.action==='list_create')for(const row of d.listInfos){if(lists.has(row.id))throw new Error('duplicate');lists.set(row.id,structuredClone(row))}if(action.action==='list_remove')for(const id of d){lists.delete(id);musics.delete(id)}if(action.action==='list_update')for(const row of d.lists)lists.set(row.id,structuredClone(row));if(action.action==='list_music_overwrite')musics.set(d.listId,structuredClone(d.musicInfos))}}};return{api,files,lists,musics,actions}}
 const source={marker:'netease:1:playlist:2',name:'网易云·我喜欢',songs:[song()],revision:'v1'}
