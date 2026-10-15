@@ -20,6 +20,8 @@ import { update } from '@/shared/update'
 import { version } from '../../package.json'
 import { setSkipTrayQuit } from './actions'
 import { initAppSetting, saveSetting } from './data'
+import { AUTH_PARTITIONS, isTrustedLoginURL, type MusicLoginProvider } from '@/modules/accountLoginPolicy'
+
 import { appEvent } from './event'
 import { appState } from './state'
 
@@ -118,7 +120,7 @@ export const registerDeeplink = () => {
     // console.log(process.execPath, process.argv)
     app.setAsDefaultProtocolClient('anysynlisten', process.execPath, process.argv.slice(1))
   } else {
-    app.setAsDefaultProtocolClient('anylisten')
+    app.setAsDefaultProtocolClient('anysynlisten')
   }
 
   // deep link
@@ -137,19 +139,13 @@ export const listenerElectronEvent = () => {
   })
   app.on('web-contents-created', (event, contents) => {
     contents.on('will-navigate', (event, navigationUrl) => {
-      // The external login lives in a sandboxed, dedicated Electron session.
-      const isNetease = contents.session === session.fromPartition('persist:netease-auth')
-      const isQQ = contents.session === session.fromPartition('persist:qqmusic-auth')
-      if (isNetease || isQQ) {
-        try {
-          const target = new URL(navigationUrl)
-          if (target.protocol === 'https:') {
-            if (isNetease && ['music.163.com', 'passport.163.com', 'reg.163.com'].includes(target.hostname)) return
-            if (isQQ && (target.hostname === 'qq.com' || target.hostname.endsWith('.qq.com') ||
-                         target.hostname === 'weixin.qq.com' || target.hostname.endsWith('.weixin.qq.com'))) return
-          }
-        } catch {}
-        event.preventDefault()
+      // Keep provider login traffic inside a sandboxed Electron partition.
+      // In particular, never hand provider SSO navigation to external Chrome.
+      const provider: MusicLoginProvider | null =
+        contents.session === session.fromPartition(AUTH_PARTITIONS.netease) ? 'netease' :
+        contents.session === session.fromPartition(AUTH_PARTITIONS.qqmusic) ? 'qqmusic' : null
+      if (provider) {
+        if (!isTrustedLoginURL(provider, navigationUrl)) event.preventDefault()
         return
       }
       if (import.meta.env.DEV) {
@@ -163,30 +159,25 @@ export const listenerElectronEvent = () => {
       console.log('navigation to url:', navigationUrl)
     })
     contents.setWindowOpenHandler(({ url }) => {
-      // QQ's official OAuth pages can open a secondary QQ/WeChat login window.
-      if (contents.session === session.fromPartition('persist:qqmusic-auth')) {
-        try {
-          const target = new URL(url)
-          if (target.protocol === 'https:' && (
-            target.hostname === 'qq.com' || target.hostname.endsWith('.qq.com') ||
-            target.hostname === 'weixin.qq.com' || target.hostname.endsWith('.weixin.qq.com')
-          )) {
-            return {
-              action: 'allow',
-              overrideBrowserWindowOptions: {
-                width: 620, height: 710,
-                webPreferences: {
-                  partition: 'persist:qqmusic-auth',
-                  nodeIntegration: false,
-                  contextIsolation: true,
-                  sandbox: true,
-                  webSecurity: true,
-                },
-              },
-            }
-          }
-        } catch {}
-        return { action: 'deny' }
+      const provider: MusicLoginProvider | null =
+        contents.session === session.fromPartition(AUTH_PARTITIONS.netease) ? 'netease' :
+        contents.session === session.fromPartition(AUTH_PARTITIONS.qqmusic) ? 'qqmusic' : null
+      if (provider) {
+        // Netease and QQ's official authentication pages open SSO popups.
+        // These MUST share the parent's cookie jar; shell.openExternal would
+        // lose the session and leave the main app waiting forever.
+        if (!isTrustedLoginURL(provider, url)) return { action: 'deny' }
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 680, height: 760,
+            webPreferences: {
+              partition: AUTH_PARTITIONS[provider],
+              nodeIntegration: false, sandbox: true,
+              contextIsolation: true, webSecurity: true,
+            },
+          },
+        }
       }
       if (!url.startsWith('devtools') && isUrl(url)) {
         void shell.openExternal(url)
