@@ -4,7 +4,7 @@ import { WebDAVClient } from '@any-listen/nodejs/webdav-client'
 
 import { workers } from '../../worker'
 import { parseLXWebDAVPlaylists } from './lxConvert'
-import { materializeLXDocument, parseLXDocument, planLXDirection, signatureOfLXLocalLists, type LXLocalList } from './lxLibrary'
+import { commitLXUserDeletion, materializeLXDocument, parseLXDocument, planLXDirection, signatureOfLXLocalLists, type LXLocalList } from './lxLibrary'
 import { applyExternalMirrors } from './mirror'
 
 export interface LXWebDAVOptions {
@@ -85,5 +85,58 @@ export const syncLXWebDAV = async (options: LXWebDAVOptions) => {
   const changed = await applyExternalMirrors(namespace, remotePlaylists, { pruneMissing: true })
   const updated = await collectLXLists(namespace)
   await options.saveBaseline?.(key + createHash('sha256').update(signatureOfLXLocalLists(updated)).digest('hex'))
+  return changed
+}
+
+/**
+ * Explicit, synchronous (from the caller's perspective) LX-N source deletion.
+ *
+ * The old UI deleted the local mirror first and hoped that the minute-based
+ * background sync would upload the removal. A remote import could restore
+ * the playlist before that upload. Commit and read back WebDAV FIRST, and
+ * only then remove the matching local mirrors.
+ */
+export const deleteLXWebDAVUserPlaylists = async (
+  options: LXWebDAVOptions, remoteUserIds: string[]
+): Promise<number> => {
+  if (!options.writeEnable || !options.baseline || !options.saveBaseline) {
+    throw new Error('LX-N 双向同步尚未初始化；请先完成首次远端同步')
+  }
+  if (!options.url || !options.username) throw new Error('WebDAV 服务器地址或账号未配置')
+  if (!remoteUserIds.length || remoteUserIds.some(id =>
+    typeof id !== 'string' || !id || id.includes(':')
+  )) {
+    throw new Error('LX-N 歌单删除包含无效的来源 ID')
+  }
+  const folder = '/' + (options.path || '/LX_Music/').replace(/^\/+|\/+$/g, '')
+  const namespace = 'lx-webdav:' + folder
+  const key = createHash('sha256').update(options.url.replace(/\/$/, '') + ':' + folder).digest('hex').slice(0, 24) + ':'
+  if (!options.baseline.startsWith(key)) {
+    throw new Error('LX-N 来源配置已变化，须先完成首次远端同步')
+  }
+  const client = new WebDAVClient({
+    baseUrl: options.url, username: options.username, password: options.password,
+  })
+  const file = folder + '/playlists.json'
+  const wanted = [...new Set(remoteUserIds)]
+  const committed = await commitLXUserDeletion(
+    wanted,
+    async () => parseLXDocument((await client.get(file)).toString()),
+    async next => { await client.putData(file, JSON.stringify(next)) },
+    async remote => {
+      const local = await collectLXLists(namespace)
+      const localHash = createHash('sha256').update(signatureOfLXLocalLists(local)).digest('hex')
+      const localChanged = planLXDirection(true, options.baseline, key, localHash) === 'write'
+      // Last desktop commit wins ONLY if it actually has pending changes.
+      // Otherwise keep the newest mobile state and just remove target IDs.
+      return localChanged ? materializeLXDocument(remote, local, Date.now()) : remote
+    }
+  )
+  // Only a confirmed, validated remote deletion may remove the local copy.
+  const changed = await applyExternalMirrors(
+    namespace, parseLXWebDAVPlaylists(JSON.stringify(committed)), { pruneMissing: true }
+  )
+  const updated = await collectLXLists(namespace)
+  await options.saveBaseline(key + createHash('sha256').update(signatureOfLXLocalLists(updated)).digest('hex'))
   return changed
 }

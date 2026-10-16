@@ -1,6 +1,8 @@
 import { MEDIA_FILE_TYPES_LOCAL } from '@any-listen/common/constants'
 import { updateUserList, createUserList } from '@/modules/musicLibrary/store/listRemoteActions'
 import { generateIdSimple } from '@/shared'
+import { deleteLXPlaylistsNow } from '@/shared/ipc/sync'
+import { withHiddenMirrorMarkers } from './mirrorVisibility'
 
 import { showSimpleConfirmModal } from '@/components/apis/dialog'
 import { showNotify } from '@/components/apis/notify'
@@ -13,6 +15,7 @@ import {
   updateListMusicsPosition,
 } from '@/modules/musicLibrary/store/actions'
 import { settingState } from '@/modules/setting/store/state'
+import { updateSetting } from '@/modules/setting/store/action'
 import { i18n } from '@/plugins/i18n'
 import { showOpenDialog } from '@/shared/ipc/app'
 import { addFolderMusics } from '@/shared/ipc/list'
@@ -149,6 +152,25 @@ type DecoratedList = AnyListen.List.GeneralListInfo & {
 const isGeneral = (item: AnyListen.List.MyListInfo): item is AnyListen.List.GeneralListInfo => item.type === 'general'
 const marked = (item: AnyListen.List.GeneralListInfo) => item as DecoratedList
 
+const rememberMirrorVisibility = async (
+  items: AnyListen.List.MyListInfo[], hidden: boolean,
+  key: 'sync.external.hiddenMirrors' | 'sync.external.deletedSourceMirrors' = 'sync.external.hiddenMirrors'
+) => {
+  const markers = items.filter(isGeneral).map(info => marked(info).meta.externalMirror).filter(
+    (v): v is string => typeof v === 'string' && v.length > 0
+  )
+  if (!markers.length) return
+  const current = settingState.setting[key]
+  const updated = withHiddenMirrorMarkers(current, markers, hidden)
+  if (updated !== current) {
+    if (key === 'sync.external.deletedSourceMirrors') {
+      await updateSetting({ 'sync.external.deletedSourceMirrors': updated })
+    } else {
+      await updateSetting({ 'sync.external.hiddenMirrors': updated })
+    }
+  }
+}
+
 /** Archive is a local, reversible view state; it does not delete platform data. */
 export const archiveUserLists = async (items: AnyListen.List.MyListInfo[], archived: boolean) => {
   const eligible = items.filter(isGeneral)
@@ -164,13 +186,14 @@ export const archiveUserLists = async (items: AnyListen.List.MyListInfo[], archi
 /** Restore hidden account mirrors explicitly; provider refresh never un-hides them. */
 export const restoreHiddenMirrors = async (items: AnyListen.List.MyListInfo[]) => {
   const eligible = items.filter((item): item is AnyListen.List.GeneralListInfo =>
-    isGeneral(item) && Boolean(marked(item).meta.externalMirrorHidden))
+    isGeneral(item) && Boolean(marked(item).meta.externalMirror))
   if (!eligible.length) return
   await updateUserList({
     lists: eligible.map(item => ({
       ...item, meta: { ...item.meta, archived: false, externalMirrorHidden: false },
     })),
   })
+  await rememberMirrorVisibility(eligible, false)
 }
 
 /**
@@ -183,20 +206,46 @@ export const removeUserLists = async (items: AnyListen.List.MyListInfo[]) => {
   const eligible = items.filter(isGeneral)
   const hide: DecoratedList[] = []
   const remove: string[] = []
+  const remoteLXUserIds: string[] = []
+  const settings = settingState.setting
+  const lxFolder = '/' + (settings['sync.lxWebdav.path'] || '/LX_Music/').replace(/^\/+|\/+$/g, '')
+  const lxPrefix = 'lx-webdav:' + lxFolder + ':user:'
+  const lxWritable = settings['sync.lxWebdav.enable'] &&
+    settings['sync.lxWebdav.writeEnable'] &&
+    settings['sync.lxWebdav.writeInitialized']
   for (const info of eligible) {
     const item = marked(info)
     const marker = item.meta.externalMirror ?? ''
     const isAccountMirror = /^(netease|qqmusic|kugou):/.test(marker)
     const isLXMirror = marker.startsWith('lx-webdav:')
-    const isLXSystem = isLXMirror && /:(default|love)$/.test(marker)
-    if (isAccountMirror || (isLXMirror && (!settingState.setting['sync.lxWebdav.writeEnable'] || isLXSystem))) {
+    const lxSystem = isLXMirror && /:(default|love)$/.test(marker)
+    if (isAccountMirror || (isLXMirror && (!lxWritable || lxSystem))) {
+      // Account mirrors and read-only LX playlists are hidden permanently in
+      // this desktop, never removed from their original provider.
       hide.push(item)
+    } else if (isLXMirror) {
+      if (!marker.startsWith(lxPrefix)) {
+        throw new Error('该 LX-N 歌单不属于当前 WebDAV 来源，已拒绝删除')
+      }
+      const sourceId = marker.slice(lxPrefix.length)
+      if (!sourceId || sourceId.includes(':')) throw new Error('LX-N 歌单来源标识无效')
+      remoteLXUserIds.push(sourceId)
     } else {
       remove.push(item.id)
     }
   }
   try {
+    // Do NOT optimistically delete LX user playlists in SQLite. The previous
+    // implementation did so and periodic LX imports resurrected them while
+    // WebDAV still held the originals. Commit the remote source first.
+    if (remoteLXUserIds.length) {
+      await deleteLXPlaylistsNow([...new Set(remoteLXUserIds)])
+      await rememberMirrorVisibility(eligible.filter(item =>
+        (marked(item).meta.externalMirror ?? '').startsWith(lxPrefix)
+      ), true, 'sync.external.deletedSourceMirrors')
+    }
     if (hide.length) {
+      await rememberMirrorVisibility(hide, true)
       await updateUserList({
         lists: hide.map(item => ({
           ...item,

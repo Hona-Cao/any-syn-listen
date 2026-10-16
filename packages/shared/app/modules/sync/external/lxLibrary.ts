@@ -186,6 +186,60 @@ export const planLXDirection = (
   writeEnabled && baseline?.startsWith(sourcePrefix) && baseline !== sourcePrefix + currentHash
     ? 'write' : 'import'
 
+/**
+ * Permanently remove only explicitly selected LX-N USER playlists from a
+ * validated WebDAV document. Neither the listening list nor favourites are
+ * deletable. Preserve unrelated LX fields and never interpret read failures
+ * as an empty remote library.
+ */
+export const removeLXUserListsFromDocument = (
+  original: LXRawDocument, ids: readonly string[], now: number
+): LXRawDocument => {
+  const wanted = new Set(ids)
+  if (!wanted.size || [...wanted].some(id => typeof id !== 'string' || !id.trim() || id.includes(':'))) {
+    throw new Error('LX-N: invalid requested playlist deletions')
+  }
+  return {
+    ...original,
+    lastModified: Math.max(now, (original.lastModified ?? 0) + 1),
+    data: {
+      ...original.data,
+      userList: original.data.userList.filter(item => !wanted.has(item.id)),
+    },
+  }
+}
+
+/**
+ * A remote deletion must be committed and read back BEFORE any local mirror
+ * reconciliation. This tiny IO boundary permits a real failure-path test
+ * without accessing the user's WebDAV or music library.
+ */
+export const commitLXUserDeletion = async (
+  sourceIds: readonly string[],
+  readRemote: () => Promise<LXRawDocument>,
+  writeRemote: (next: LXRawDocument) => Promise<void>,
+  prepareLocalState?: (remote: LXRawDocument) => Promise<LXRawDocument>,
+  now: () => number = Date.now
+): Promise<LXRawDocument> => {
+  if (!sourceIds.length || sourceIds.some(id => typeof id !== 'string' || !id.trim() || id.includes(':'))) {
+    throw new Error('LX-N: invalid requested playlist deletions')
+  }
+  const raw = await readRemote()
+  const wanted = new Set(sourceIds)
+  if (!raw.data.userList.some(item => wanted.has(item.id))) {
+    // Already deleted on the phone: do not replace newer unrelated content.
+    return raw
+  }
+  const base = prepareLocalState ? await prepareLocalState(raw) : raw
+  const next = removeLXUserListsFromDocument(base, sourceIds, now())
+  await writeRemote(next)
+  const readback = await readRemote()
+  if (JSON.stringify(readback.data) !== JSON.stringify(next.data)) {
+    throw new Error('LX-N: WebDAV delete verification failed')
+  }
+  return readback
+}
+
 /** Archiving only recognizes source-dated daily recommendation lists. */
 export const datedLXRecommendations = (lists: Array<{ key: string; name: string }>): Set<string> => {
   const dates = lists.map(list => {

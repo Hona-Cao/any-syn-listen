@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  parseLXDocument, materializeLXDocument, signatureOfLXLocalLists, datedLXRecommendations, planLXDirection,
+  parseLXDocument, materializeLXDocument, removeLXUserListsFromDocument, commitLXUserDeletion, signatureOfLXLocalLists, datedLXRecommendations, planLXDirection,
 } from '../../shared/app/modules/sync/external/lxLibrary.ts'
 
 const source = () => ({
@@ -172,4 +172,86 @@ test('unknown malformed LX mirror keys refuse writeback', () => {
   const doc = parseLXDocument(JSON.stringify(source()))
   assert.throws(() => materializeLXDocument(doc,
     [...localFrom(doc), { key: 'not-an-lx-playlist', name: '非法', songs: [] }], 2000), /invalid user playlist/)
+})
+
+test('confirmed LX deletion removes only the selected source playlist', () => {
+  const raw = parseLXDocument(JSON.stringify(source()))
+  const next = removeLXUserListsFromDocument(raw, ['old'], 5000)
+  assert.deepEqual(next.data.userList.map(item => item.id), ['new'])
+  assert.deepEqual(next.data.defaultList, raw.data.defaultList)
+  assert.deepEqual(next.data.loveList, raw.data.loveList)
+  assert.deepEqual(next.data.tempList, raw.data.tempList)
+  assert.deepEqual(next.extraField, raw.extraField)
+  assert.equal(next.lastModified, 5000)
+  assert.equal(raw.data.userList.length, 2)
+})
+
+test('LX source deletion is idempotent when phone removed playlist first', () => {
+  const raw = parseLXDocument(JSON.stringify(source()))
+  const next = removeLXUserListsFromDocument(raw, ['unknown'], 5000)
+  assert.deepEqual(next.data, raw.data)
+})
+
+test('source delete never accepts empty, system or ambiguous playlist identifiers', () => {
+  const raw = parseLXDocument(JSON.stringify(source()))
+  for (const ids of [[], [''], ['user:old'], ['\t'], ['old', 'user:love']]) {
+    assert.throws(() => removeLXUserListsFromDocument(raw, ids, 5000), /invalid requested/)
+  }
+})
+
+test('after valid source deletion LX mirror prune receives a complete dataset', async () => {
+  const raw = parseLXDocument(JSON.stringify(source()))
+  const next = removeLXUserListsFromDocument(raw, ['old'], 5000)
+  const valid = parseLXDocument(JSON.stringify(next))
+  assert.equal(valid.data.userList.length, 1)
+  assert.ok(Array.isArray(valid.data.defaultList))
+  assert.ok(Array.isArray(valid.data.loveList))
+})
+
+test('LX deletion commits to WebDAV before the local mirror may be removed', async () => {
+  let remote = parseLXDocument(JSON.stringify(source()))
+  const events = []
+  const read = async () => { events.push('remote-read'); return remote }
+  const write = async (doc) => { events.push('remote-commit'); remote = doc }
+  const local = async () => { events.push('local-reconcile') }
+  const confirmed = await commitLXUserDeletion(['old'], read, write, undefined, () => 8000)
+  await local(confirmed)
+  assert.deepEqual(events, ['remote-read', 'remote-commit', 'remote-read', 'local-reconcile'])
+  assert.deepEqual(remote.data.userList.map(v => v.id), ['new'])
+})
+
+test('LX network failure never reaches local deletion or reconciliation', async () => {
+  const remote = parseLXDocument(JSON.stringify(source()))
+  const events = []
+  let reconciled = false
+  await assert.rejects(commitLXUserDeletion(
+    ['old'], async () => remote,
+    async () => { events.push('put-failed'); throw new Error('network down') },
+    undefined, () => 8000
+  ).then(() => { reconciled = true }), /network down/)
+  assert.deepEqual(remote.data.userList.map(v => v.id), ['old','new'])
+  assert.deepEqual(events, ['put-failed'])
+  assert.equal(reconciled, false)
+})
+
+test('LX concurrent overwrite is detected by read-back verification', async () => {
+  const original = parseLXDocument(JSON.stringify(source()))
+  await assert.rejects(
+    commitLXUserDeletion(
+      ['old'], async () => original,
+      async () => { /* a conflicting client writes back the older library */ },
+      undefined, () => 8000
+    ), /verification failed/
+  )
+})
+
+test('already-deleted LX source IDs do not rewrite unrelated phone data', async () => {
+  const remote = parseLXDocument(JSON.stringify(source()))
+  let uploads = 0
+  const result = await commitLXUserDeletion(['gone-on-phone'],
+    async () => remote,
+    async () => { uploads++ },
+    undefined, () => 8000)
+  assert.equal(result, remote)
+  assert.equal(uploads, 0)
 })

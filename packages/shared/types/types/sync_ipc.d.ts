@@ -21,6 +21,7 @@ declare namespace AnyListen {
       getSyncState: () => SyncState
       getExternalSyncState: () => Record<ExternalProvider, ExternalState>
       runExternalSyncNow: (provider: ExternalProvider, dailyOnly?: boolean) => void
+      deleteLXPlaylistsNow: (remoteUserIds: string[]) => number
       runSyncWebDAV: (
         getListMergeMode?: () => Promise<List.MergeMode>,
         getDislikeMergeMode?: () => Promise<Dislike.MergeMode>

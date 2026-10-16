@@ -617,6 +617,10 @@ declare global {
       'sync.lxWebdav.writeEnable': boolean
       /** Prevents writing back before the first remote-authoritative sync. */
       'sync.lxWebdav.writeInitialized': boolean
+      /** Local-only identities hidden from the sidebar, even after native WebDAV merge. */
+      'sync.external.hiddenMirrors': string
+      /** Proven source deletions never reappear, even via legacy native snapshots. */
+      'sync.external.deletedSourceMirrors': string
       /** Last imported LX-N mirror signature; metadata only, not a backup. */
       'sync.lxWebdav.baseline': string
       'sync.netease.enable': boolean

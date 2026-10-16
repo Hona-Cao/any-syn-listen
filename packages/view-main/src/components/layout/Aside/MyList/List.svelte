@@ -1,6 +1,7 @@
 <script lang="ts">
   import ListItem from './ListItem.svelte'
   import { isPlaylistDeleteShortcut, resolvePlaylistContext, type PlaylistBulkAction } from './selection'
+  import { parseHiddenMirrorMarkers } from './mirrorVisibility'
   import Menu from './Menu.svelte'
   import { useListItemHeight } from '@/modules/app/reactive.svelte'
   import type { Position } from '@/components/base/Menu.svelte'
@@ -23,9 +24,17 @@
   let menu: ComponentExports<typeof Menu>
 
   const userLists = useUserList(null)
-  const isHidden = (item: AnyListen.List.MyListInfo) =>
-    Boolean((item.meta as { archived?: boolean; externalMirrorHidden?: boolean }).archived ||
-      (item.meta as { archived?: boolean; externalMirrorHidden?: boolean }).externalMirrorHidden)
+  const hiddenMirrorMarkers = $derived(parseHiddenMirrorMarkers(settingState.setting['sync.external.hiddenMirrors']))
+  const deletedSourceMarkers = $derived(parseHiddenMirrorMarkers(settingState.setting['sync.external.deletedSourceMirrors']))
+  const isSourceDeleted = (item: AnyListen.List.MyListInfo) => {
+    const marker = (item.meta as { externalMirror?: string }).externalMirror
+    return Boolean(marker && deletedSourceMarkers.has(marker))
+  }
+  const isHidden = (item: AnyListen.List.MyListInfo) => {
+    const meta = item.meta as { archived?: boolean; externalMirrorHidden?: boolean; externalMirror?: string }
+    return Boolean(meta.archived || meta.externalMirrorHidden ||
+      (meta.externalMirror && hiddenMirrorMarkers.has(meta.externalMirror)))
+  }
   let showArchived = $state(false)
   let selectedIds = $state<string[]>([])
   let anchor = $state<string | null>(null)
@@ -46,11 +55,11 @@
       busy = false
     }
   }
-  const archiveCount = $derived(userLists.val.filter(isHidden).length)
+  const archiveCount = $derived(userLists.val.filter(item => !isSourceDeleted(item) && isHidden(item)).length)
   const lists = $derived([
     ...$defaultLists,
-    ...userLists.val.filter(item => !isHidden(item)),
-    ...(showArchived ? userLists.val.filter(isHidden) : []),
+    ...userLists.val.filter(item => !isSourceDeleted(item) && !isHidden(item)),
+    ...(showArchived ? userLists.val.filter(item => !isSourceDeleted(item) && isHidden(item)) : []),
   ])
   const selectedItems = $derived(lists.filter(item => item.type === 'general' && selectedIds.includes(item.id)))
   let activeIndex = $state(-1)

@@ -9,6 +9,7 @@ import { executeCommand } from '@/modules/command'
 import { openNeteaseLoginWindow } from '@/modules/neteaseLogin'
 import { openQQMusicLoginWindow } from '@/modules/qqMusicLogin'
 import { openKugouLoginWindow } from '@/modules/kugouLogin'
+import { readAccountSecret } from '@/modules/accountVault'
 import { requestMusicSMSCode, loginMusicWithSMSCode } from '@/modules/musicPhoneAuth'
 import { clipboardReadText, clipboardWriteText, exitApp, openDirInExplorer, openUrl } from '@/shared/electron'
 import { getFonts } from '@/shared/fontManage'
@@ -31,6 +32,18 @@ import {
 // 暴露给前端的方法
 export const createExposeApp = () => {
   return {
+    async getSavedMusicLoginState() {
+      // Only booleans may cross into the renderer; the encrypted credential
+      // values never leave the Electron main process.
+      const [netease, qq, kugou] = await Promise.all([
+        readAccountSecret('netease'), readAccountSecret('qqmusic'), readAccountSecret('kugou'),
+      ])
+      return {
+        netease: Boolean(netease || appState.appSetting['sync.netease.cookie']),
+        qq: Boolean(qq),
+        kugou: Boolean(kugou),
+      }
+    },
     async loginNeteaseInWindow() {
       return openNeteaseLoginWindow()
     },

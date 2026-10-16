@@ -48,6 +48,9 @@ export const createExposeApp = (client: ClientCall) => {
 // 暴露给前端的方法
 export const createClientApp = (main: MainCall) => {
   return {
+    async getSavedMusicLoginState() {
+      return main.getSavedMusicLoginState()
+    },
     async loginNeteaseInWindow() {
       return main.loginNeteaseInWindow()
     },

@@ -1,4 +1,4 @@
-import { getSyncWebDAVState, getExternalSyncState, runExternalSyncNow, runSyncWebDAV } from '@/modules/sync'
+import { getSyncWebDAVState, getExternalSyncState, runExternalSyncNow, deleteLXPlaylistsNow, runSyncWebDAV } from '@/modules/sync'
 
 import type { ExposeFunctions } from '.'
 
@@ -21,6 +21,9 @@ export const createExposeSync = () => {
     },
     async runExternalSyncNow(event, provider, dailyOnly) {
       return runExternalSyncNow(provider, dailyOnly)
+    },
+    async deleteLXPlaylistsNow(event, remoteUserIds) {
+      return deleteLXPlaylistsNow(remoteUserIds)
     },
     async runSyncWebDAV(event, getListMergeMode, getDislikeMergeMode) {
       return runSyncWebDAV(getListMergeMode, getDislikeMergeMode)

@@ -4,6 +4,7 @@ import {
   getSyncWebDAVState,
   getExternalSyncState,
   runExternalSyncNow as runExternalSyncNowOriginal,
+  deleteLXPlaylistsNow as deleteLXPlaylistsNowOriginal,
   configureLXBaselineSaver,
   type ExternalSyncProvider,
   configureNeteaseSessionProvider,
@@ -94,5 +95,6 @@ export const onWebDAVSyncStatusChanged = (callback: (state: AnyListen.IPCSync.Sy
 
 export { getSyncWebDAVState, getExternalSyncState }
 export const runExternalSyncNow = (provider: ExternalSyncProvider, dailyOnly?: boolean) => runExternalSyncNowOriginal(provider, dailyOnly)
+export const deleteLXPlaylistsNow = (remoteUserIds: string[]) => deleteLXPlaylistsNowOriginal(remoteUserIds)
 
 export { syncWebDAVEvent } from '@any-listen/app/modules/sync'

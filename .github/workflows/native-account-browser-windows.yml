@@ -36,7 +36,7 @@ jobs:
           if (!$app.Contains("app.setAsDefaultProtocolClient('anysynlisten')")) { throw "Fork would take over official URL protocol" }
           if (!$pack.Contains("productName: 'any-syn-listen'")) { throw "Missing distinct app name" }
       - name: Test browser partition, Cookie capture policy and login verification
-        run: node --test packages/desktop/test/nativeAccountLogin.test.mjs packages/desktop/test/lxWebdavRoundtrip.test.mjs packages/desktop/test/dailyHistory.test.mjs packages/desktop/test/playlistContextMenu.test.mjs
+        run: node --test packages/desktop/test/nativeAccountLogin.test.mjs packages/desktop/test/lxWebdavRoundtrip.test.mjs packages/desktop/test/dailyHistory.test.mjs packages/desktop/test/playlistContextMenu.test.mjs packages/desktop/test/mirrorVisibility.test.mjs
       - name: Bundle complete Electron desktop
         run: pnpm -F @shared/scripts build:desktop
       - name: Package portable Windows x64 application

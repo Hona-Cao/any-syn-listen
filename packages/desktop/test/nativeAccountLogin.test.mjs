@@ -70,3 +70,16 @@ test('QQ recognition requires provider-domain musicid and qqmusic_key', () => {
   assert.equal(qqCredentialFromSession([mock[2]]),null)
   assert.equal(qqCredentialFromSession([{name:'musicid',value:'12345',domain:'.qq.com'}]),null)
 })
+
+test('explicit platform login cleans stale BrowserWindow sessions before loading official page', async () => {
+  const fs = await import('node:fs/promises')
+  const path = await import('node:path')
+  for (const name of ['neteaseLogin.ts', 'qqMusicLogin.ts']) {
+    const text = await fs.readFile(path.join(import.meta.dirname, '../src/modules', name), 'utf8')
+    const clearAt = text.indexOf('.clearStorageData({ storages:')
+    const preparedAt = text.indexOf('loginPrepared = true')
+    const loadAt = text.indexOf('await win.loadURL(')
+    assert.ok(clearAt > 0 && preparedAt > clearAt && loadAt > preparedAt, name)
+    assert.match(text, /if \(!loginPrepared \|\| finished/ , name)
+  }
+})

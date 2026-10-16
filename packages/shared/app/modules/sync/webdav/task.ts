@@ -1,5 +1,5 @@
 import { getSettings } from '../../../common'
-import { syncLXWebDAV } from '../external/lxWebdav'
+import { deleteLXWebDAVUserPlaylists, syncLXWebDAV } from '../external/lxWebdav'
 import { syncQQMusicAccount, syncQQMusicDaily, type QQMusicCredential } from '../external/qqMusic'
 import { syncKugouAccount, syncKugouDaily, type KugouAccount } from '../external/kugouMusic'
 import { syncNeteaseAccount, syncNeteaseDaily } from '../external/netease'
@@ -213,6 +213,41 @@ const syncLXIfDue = async (forced = false) => {
     fail('lx', err)
     console.warn('[LX N WebDAV] Sync failed:', (err as Error).message)
     if (forced) throw err
+  } finally {
+    lxRunning = false
+  }
+}
+
+/**
+ * Remote-first deletion is serialized with all LX-N background operations.
+ * Failure leaves the local lists intact so a transient network outage does
+ * not turn deletion into a disappearing/reappearing UI operation.
+ */
+export const deleteLXPlaylistsNow = async (sourceIds: string[]) => {
+  const settings = getSettings()
+  if (!settings['sync.lxWebdav.enable'] ||
+      !settings['sync.lxWebdav.writeEnable'] ||
+      !settings['sync.lxWebdav.writeInitialized']) {
+    throw new Error('请先启用并完成 LX-N 双向同步初始化')
+  }
+  if (lxRunning) throw new Error('LX-N 正在同步，请等待当前任务结束后重试删除')
+  lxRunning = true
+  start('lx')
+  try {
+    const changed = await deleteLXWebDAVUserPlaylists({
+      url: settings['sync.webdav.url'],
+      username: settings['sync.webdav.username'],
+      password: settings['sync.webdav.password'],
+      path: settings['sync.lxWebdav.path'],
+      writeEnable: true,
+      baseline: settings['sync.lxWebdav.baseline'],
+      saveBaseline: saveLXBaseline,
+    }, sourceIds)
+    succeed('lx')
+    return changed
+  } catch (err) {
+    fail('lx', err)
+    throw err
   } finally {
     lxRunning = false
   }
