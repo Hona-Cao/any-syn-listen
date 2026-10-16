@@ -22,6 +22,7 @@ export declare type ServerCommonActions = WarpPromiseRecord<{
   setSystemThemeMode: (isDark: boolean) => void
 
   /** Open a sandboxed official NetEase login page and capture session in main process. */
+  getSavedMusicLoginState: () => { netease: boolean; qq: boolean; kugou: boolean }
   loginNeteaseInWindow: () => boolean
   loginQQMusicInWindow: () => boolean
   loginKugouInWindow: () => boolean

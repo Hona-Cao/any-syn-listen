@@ -4,6 +4,7 @@
   import Menu, { type MenuItem, type MenuList } from '@/components/base/Menu.svelte'
   import { LIST_IDS } from '@any-listen/common/constants'
   import { importLocalFile, importLocalFileFolder, removeUserList, syncUserList } from './action'
+  import type { PlaylistBulkAction } from './selection'
   import { showListEditModal } from '@/components/apis/listEditModal'
   import { musicLibraryEvent } from '@/modules/musicLibrary/store/event'
   import { appState } from '@/modules/app/store/state'
@@ -11,8 +12,10 @@
 
   let {
     onhide,
+    onbatchaction,
   }: {
     onhide?: () => void
+    onbatchaction?: (action: PlaylistBulkAction, lists: AnyListen.List.MyListInfo[]) => void
   } = $props()
 
   type MenuType =
@@ -27,14 +30,30 @@
     | 'import'
     | 'export'
     | 'remove'
+    | 'archive'
+    | 'restore'
   let menuVisible = $state.raw(false)
   let menuLocation = $state.raw({ x: 0, y: 0 })
   let menus = $state.raw<MenuList<MenuType>>([])
   let info: AnyListen.List.MyListInfo | null
+  let contextSelection: AnyListen.List.MyListInfo[] = []
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   let fetchingListStatus = new Set<string>()
 
   const setMenu = () => {
+    if (contextSelection.length > 1) {
+      // Never expose single-playlist editing actions for a multi-selection:
+      // rename/import/sync has no well-defined group semantics.
+      const total = contextSelection.length
+      const fetching = contextSelection.some((item) => fetchingListStatus.has(item.id))
+      menus = [
+        { action: 'archive', label: '归档所选 ' + total + ' 张歌单' },
+        { action: 'restore', label: '恢复所选 ' + total + ' 张歌单' },
+        null,
+        { action: 'remove', disabled: fetching, label: '删除所选 ' + total + ' 张歌单' },
+      ]
+      return
+    }
     if (!info) {
       menus = [{ action: 'create', label: $t('user_list_menu__create') }]
       return
@@ -58,6 +77,9 @@
     const fetching = fetchingListStatus.has(info.id)
     const disabledUpdate = fetching || (info.type == 'local' && info.meta.deviceId != appState.machineId)
     const isGeneral = GENERAL_LIST_TYPES.includes(info.type)
+    const isUserGeneral = info.type === 'general'
+    const meta = info.meta as { archived?: boolean; externalMirrorHidden?: boolean }
+    const hidden = Boolean(meta.archived || meta.externalMirrorHidden)
 
     menus = (
       [
@@ -72,14 +94,21 @@
         // { action: 'sourceDetail', label: $t('user_list_menu__source_detail') },
         // { action: 'import', label: $t('user_list_menu__import') },
         // { action: 'export', label: $t('user_list_menu__export') },
+        isUserGeneral && { action: 'archive', disabled: hidden, label: '归档歌单' },
+        isUserGeneral && { action: 'restore', disabled: !hidden, label: '恢复歌单' },
         null,
         { action: 'remove', disabled: !remove || fetching, label: $t('user_list_menu__remove') },
       ] satisfies Array<MenuList<MenuType>[number] | false>
     ).filter((m) => m !== false)
   }
 
-  export const show = async (selectInfo: AnyListen.List.MyListInfo | null, position: { x: number; y: number }) => {
+  export const show = async (
+    selectInfo: AnyListen.List.MyListInfo | null,
+    position: { x: number; y: number },
+    selected: AnyListen.List.MyListInfo[] = []
+  ) => {
     info = selectInfo
+    contextSelection = selected.filter((item) => item.type === 'general')
     menuLocation = position
     setMenu()
     await tick()
@@ -87,6 +116,13 @@
   }
 
   const handleClick = (menu: MenuItem<MenuType>) => {
+    if (contextSelection.length > 1) {
+      if (menu.action === 'archive' || menu.action === 'restore' || menu.action === 'remove') {
+        onbatchaction?.(menu.action, [...contextSelection])
+      }
+      menuVisible = false
+      return
+    }
     switch (menu.action) {
       case 'create':
         void showListEditModal(info?.id)
@@ -103,8 +139,13 @@
       case 'update':
         void syncUserList(info!)
         break
+      case 'archive':
+      case 'restore':
+        if (info?.type === 'general') onbatchaction?.(menu.action, [info])
+        break
       case 'remove':
-        void removeUserList(info!)
+        if (info?.type === 'general') onbatchaction?.('remove', [info])
+        else void removeUserList(info!)
         break
 
       default:

@@ -17,6 +17,15 @@ export const createClientSync = (main: MainCall) => {
     async getSyncState() {
       return main.getSyncState()
     },
+    async getExternalSyncState() {
+      return main.getExternalSyncState()
+    },
+    async runExternalSyncNow(provider, dailyOnly) {
+      return main.runExternalSyncNow(provider, dailyOnly)
+    },
+    async deleteLXPlaylistsNow(remoteUserIds) {
+      return main.deleteLXPlaylistsNow(remoteUserIds)
+    },
     async runSyncWebDAV(getListMergeMode, getDislikeMergeMode) {
       const proxyGetListMergeMode = getListMergeMode
         ? createProxyCallback(async (): Promise<AnyListen.List.MergeMode> => {

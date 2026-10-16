@@ -29,6 +29,7 @@ export const openQQMusicLoginWindow = (): Promise<boolean> => {
       },
     })
     let finished = false
+    let loginPrepared = false
     let verifying = false
     let lastTry = 0
     const ticker = setInterval(() => { void verify() }, 6000)
@@ -41,7 +42,7 @@ export const openQQMusicLoginWindow = (): Promise<boolean> => {
       resolve(success)
     }
     const verify = async () => {
-      if (finished || verifying || Date.now() - lastTry < 3000) return
+      if (!loginPrepared || finished || verifying || Date.now() - lastTry < 3000) return
       lastTry = Date.now()
       verifying = true
       try {
@@ -61,23 +62,31 @@ export const openQQMusicLoginWindow = (): Promise<boolean> => {
         verifying = false
       }
     }
-    const onCookieChanged = (_event: Electron.Event, cookie: Electron.Cookie) => {
-      if (['qm_keyst', 'qqmusic_key', 'uin', 'wxuin', 'musicid','qqmusic_uin'].includes(cookie.name)) void verify()
+    const onCookieChanged = (_event: Electron.Event, cookie: Electron.Cookie, _cause: string, removed: boolean) => {
+      if (!removed && ['qm_keyst', 'qqmusic_key', 'uin', 'wxuin', 'musicid','qqmusic_uin'].includes(cookie.name)) void verify()
     }
     ses.cookies.on('changed', onCookieChanged)
     win.webContents.on('did-finish-load', () => { void verify() })
     win.webContents.on('did-navigate', () => { void verify() })
     win.webContents.on('did-navigate-in-page', () => { void verify() })
     win.on('closed', () => { finish(false) })
-    void verify()
-    void win.loadURL('https://y.qq.com/n/ryqq/profile').catch((err: Error) => {
-      if (finished) return
-      finished = true
-      clearInterval(ticker)
-      ses.cookies.removeListener('changed', onCookieChanged)
-      reject(new Error('QQ 音乐官方登录页面打开失败：' + err.message))
-      if (!win.isDestroyed()) win.close()
-    })
+    // Never auto-accept a prior session when the user explicitly clicked
+    // 登录. The vault is untouched if this re-login window is cancelled.
+    void (async () => {
+      try {
+        await ses.clearStorageData({ storages: ['cookies', 'localstorage'] })
+        if (finished) return
+        loginPrepared = true
+        await win.loadURL('https://y.qq.com/n/ryqq/profile')
+      } catch (err) {
+        if (finished) return
+        finished = true
+        clearInterval(ticker)
+        ses.cookies.removeListener('changed', onCookieChanged)
+        reject(new Error('QQ 音乐官方登录页面打开失败：' + (err as Error).message))
+        if (!win.isDestroyed()) win.close()
+      }
+    })()
   }).finally(() => { pendingLogin = undefined })
   return pendingLogin
 }

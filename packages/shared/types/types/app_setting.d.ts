@@ -614,10 +614,21 @@ declare global {
       /** Import LX N WebDAV lists as separate user playlists (read-only). */
       'sync.lxWebdav.enable': boolean
       'sync.lxWebdav.path': string
+      'sync.lxWebdav.writeEnable': boolean
+      /** Prevents writing back before the first remote-authoritative sync. */
+      'sync.lxWebdav.writeInitialized': boolean
+      /** Local-only identities hidden from the sidebar, even after native WebDAV merge. */
+      'sync.external.hiddenMirrors': string
+      /** Proven source deletions never reappear, even via legacy native snapshots. */
+      'sync.external.deletedSourceMirrors': string
+      /** Last imported LX-N mirror signature; metadata only, not a backup. */
+      'sync.lxWebdav.baseline': string
       'sync.netease.enable': boolean
       'sync.netease.cookie': string
       'sync.qq.enable': boolean
       'sync.kugou.enable': boolean
+      /** Save a frozen, archived snapshot for each provider's daily recommendation day. */
+      'sync.daily.saveHistory': boolean
 
       /** 备份路径 */
       'backup.backupPath': string

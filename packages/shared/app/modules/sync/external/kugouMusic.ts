@@ -1,6 +1,8 @@
 import { constants, createCipheriv, createDecipheriv, createHash, publicEncrypt, randomBytes } from 'node:crypto'
 
 import type { MirrorPlaylist } from './mirror'
+// @ts-ignore Node type-strip test imports require an explicit TypeScript extension.
+import { addOptionalDailyHistory } from './dailyHistory.ts'
 
 /**
  * Read-only first-party Kugou gateway client. Endpoint shapes are based on
@@ -417,8 +419,15 @@ export const readKugouPlaylists = async (account: KugouAccount): Promise<MirrorP
   }
   return mirrors
 }
-export const syncKugouAccount = async (account: KugouAccount) => {
+export const syncKugouDaily = async (account: KugouAccount, saveHistory = false) => {
+  safeAccount(account)
+  const daily = await readKugouDaily(account)
+  if (!daily) throw new Error('酷狗每日推荐暂不可用；保留已有推荐')
+  const { applyExternalMirrors } = await import('./mirror')
+  return applyExternalMirrors('kugou:' + account.userId, addOptionalDailyHistory([daily], saveHistory))
+}
+export const syncKugouAccount = async (account: KugouAccount, saveHistory = false) => {
   const playlists = await readKugouPlaylists(account)
   const { applyExternalMirrors } = await import('./mirror')
-  return applyExternalMirrors('kugou:' + account.userId, playlists)
+  return applyExternalMirrors('kugou:' + account.userId, addOptionalDailyHistory(playlists, saveHistory))
 }

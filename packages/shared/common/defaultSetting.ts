@@ -128,10 +128,16 @@ const defaultSetting: AnyListen.AppSetting = {
   'sync.webdav.syncEnable.dislike': true,
   'sync.lxWebdav.enable': false,
   'sync.lxWebdav.path': '/LX_Music/',
+  'sync.lxWebdav.writeEnable': false,
+  'sync.lxWebdav.writeInitialized': false,
+  'sync.external.hiddenMirrors': '[]',
+  'sync.external.deletedSourceMirrors': '[]',
+  'sync.lxWebdav.baseline': '',
   'sync.netease.enable': false,
   'sync.netease.cookie': '',
   'sync.qq.enable': false,
   'sync.kugou.enable': false,
+  'sync.daily.saveHistory': false,
 
   'backup.backupPath': '',
 

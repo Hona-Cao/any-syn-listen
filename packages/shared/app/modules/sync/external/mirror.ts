@@ -8,10 +8,13 @@ export interface MirrorPlaylist {
   key: string
   name: string
   list: AnyListen.Music.MusicInfoOnline[]
+  archived?: boolean
 }
-type MarkedMeta = AnyListen.List.UserListInfoByGeneralMeta & { externalMirror?: string }
+type MarkedMeta = AnyListen.List.UserListInfoByGeneralMeta & { externalMirror?: string; archived?: boolean; externalMirrorHidden?: boolean; autoArchivedLXDaily?: boolean }
 
-const buildMeta = (marker: string, songCount: number): MarkedMeta => ({
+const buildMeta = (marker: string, songCount: number, archived = false): MarkedMeta => ({
+  archived,
+  autoArchivedLXDaily: archived,
   externalMirror: marker,
   createTime: Date.now(),
   updateTime: Date.now(),
@@ -27,7 +30,7 @@ const buildMeta = (marker: string, songCount: number): MarkedMeta => ({
  * user playlists or AnyListen's snapshot protocol. Missing source playlists
  * are intentionally NOT deleted (a transient API error must not erase data).
  */
-export const applyExternalMirrors = async (namespace: string, playlists: MirrorPlaylist[]) => {
+export const applyExternalMirrors = async (namespace: string, playlists: MirrorPlaylist[], options: { pruneMissing?: boolean } = {}) => {
   if (!namespace || !playlists.length) return 0
   const userLists = (await workers.dbService.getAllUserLists()).userList
   const owned = new Map<string, AnyListen.List.GeneralListInfo>()
@@ -52,27 +55,43 @@ export const applyExternalMirrors = async (namespace: string, playlists: MirrorP
     // The same list can be read again without generating extra DB writes.
     const name = playlist.name.slice(0, 100)
     let current = owned.get(marker)
+    // A dated account history is a snapshot: never replace a saved day's
+    // songs when "refresh daily" changes the dynamic current recommendation.
+    if (current && playlist.key.startsWith('daily-history:')) continue
     if (!current) {
       current = {
         id: generateId(),
         name,
         type: 'general',
         parentId: null,
-        meta: buildMeta(marker, songs.length),
+        meta: buildMeta(marker, songs.length, playlist.archived),
       }
       await sendMusicListAction({
         action: 'list_create',
         data: { position: -1, listInfos: [current] },
       })
       changed++
-    } else if (current.name !== name) {
-      current = { ...current, name, meta: { ...current.meta, updateTime: Date.now() } }
+    } else if (current.name !== name || (playlist.archived && !((current.meta as MarkedMeta).autoArchivedLXDaily))) {
+      const meta = current.meta as MarkedMeta
+      const updated: AnyListen.List.GeneralListInfo = {
+        ...current, name,
+        meta: {
+          ...meta,
+          // Importing an old dated recommendation archives it once, without
+          // re-archiving a list the user later deliberately restored.
+          archived: playlist.archived && !meta.autoArchivedLXDaily ? true : meta.archived,
+          autoArchivedLXDaily: meta.autoArchivedLXDaily || Boolean(playlist.archived),
+          updateTime: Date.now(),
+        } as MarkedMeta,
+      }
+      current = updated
       await sendMusicListAction({
         action: 'list_update',
-        data: { lists: [current], sync: true },
+        data: { lists: [updated] },
       })
       changed++
     }
+    if (!current) throw new Error('External mirror could not be created')
     const old = await workers.dbService.getListMusics(current.id)
     // Check more than the ids: user edits to mirrored metadata are restored.
     const signature = (list: AnyListen.Music.MusicInfo[]) =>
@@ -83,6 +102,15 @@ export const applyExternalMirrors = async (namespace: string, playlists: MirrorP
         data: { listId: current.id, musicInfos: songs },
       })
       changed++
+    }
+  }
+  // Only an explicitly complete, validated LX-N snapshot may remove missing
+  // mirrors. A partial third-party API response must never propagate deletions.
+  if (options.pruneMissing) {
+    const removed = [...owned].filter(([marker]) => !seen.has(marker)).map(([, item]) => item.id)
+    if (removed.length) {
+      await sendMusicListAction({ action: 'list_remove', data: removed })
+      changed += removed.length
     }
   }
   return changed

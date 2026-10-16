@@ -2,6 +2,11 @@ import { Notification } from 'electron'
 
 import {
   getSyncWebDAVState,
+  getExternalSyncState,
+  runExternalSyncNow as runExternalSyncNowOriginal,
+  deleteLXPlaylistsNow as deleteLXPlaylistsNowOriginal,
+  configureLXBaselineSaver,
+  type ExternalSyncProvider,
   configureNeteaseSessionProvider,
   configureOtherMusicSessionProvider,
   runSyncWebDAV as runSyncWebDAVOriginal,
@@ -32,6 +37,16 @@ export const initSync = async () => {
       const raw = await readAccountSecret('kugou')
       return raw ? JSON.parse(raw) as import('@any-listen/app/modules/sync/external/kugouMusic').KugouAccount : null
     },
+  })
+  configureLXBaselineSaver((baseline) => {
+    const settings = appState.appSetting
+    if (settings['sync.lxWebdav.baseline'] !== baseline ||
+        (settings['sync.lxWebdav.writeEnable'] && !settings['sync.lxWebdav.writeInitialized'])) {
+      updateSetting({
+        'sync.lxWebdav.baseline': baseline,
+        'sync.lxWebdav.writeInitialized': settings['sync.lxWebdav.writeEnable'],
+      })
+    }
   })
   configureNeteaseSessionProvider({
     getCookie: async () => appState.appSetting['sync.netease.cookie'] || await readSecureNeteaseCookie(),
@@ -78,6 +93,8 @@ export const onWebDAVSyncStatusChanged = (callback: (state: AnyListen.IPCSync.Sy
   syncWebDAVEvent.on('statusChanged', callback)
 }
 
-export { getSyncWebDAVState }
+export { getSyncWebDAVState, getExternalSyncState }
+export const runExternalSyncNow = (provider: ExternalSyncProvider, dailyOnly?: boolean) => runExternalSyncNowOriginal(provider, dailyOnly)
+export const deleteLXPlaylistsNow = (remoteUserIds: string[]) => deleteLXPlaylistsNowOriginal(remoteUserIds)
 
 export { syncWebDAVEvent } from '@any-listen/app/modules/sync'

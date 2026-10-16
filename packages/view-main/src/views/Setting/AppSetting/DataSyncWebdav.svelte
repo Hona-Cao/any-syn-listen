@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { t } from '@/plugins/i18n'
-  import { loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
+  import { getSavedMusicLoginState, loginNeteaseInWindow, loginQQMusicInWindow, loginKugouInWindow } from '@/shared/ipc/app'
   import TitleContent from '../components/TitleContent.svelte'
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
   import Checkbox from '@/components/base/Checkbox.svelte'
-  import { runSyncWebDAV } from '@/shared/ipc/sync'
+  import { runSyncWebDAV, getExternalSyncState, runExternalSyncNow } from '@/shared/ipc/sync'
   import Input from '@/components/base/Input.svelte'
   import { settingState } from '@/modules/setting/store/state'
   import { useSyncWebDAVState } from '@/modules/sync/reactive.svelte'
@@ -53,10 +54,56 @@
   let qqMessage = $state('')
   let qqLoginBusy = $state(false)
   let kugouEnable = $state(settingState.setting['sync.kugou.enable'])
+  let dailySaveHistory = $state(settingState.setting['sync.daily.saveHistory'])
   let kugouMessage = $state('')
   let kugouLoginBusy = $state(false)
   let lxEnable = $state(settingState.setting['sync.lxWebdav.enable'])
   let lxPath = $state(settingState.setting['sync.lxWebdav.path'])
+  let lxWriteEnable = $state(settingState.setting['sync.lxWebdav.writeEnable'])
+  let externalStates = $state<Awaited<ReturnType<typeof getExternalSyncState>> | null>(null)
+  let savedAuth = $state<Awaited<ReturnType<typeof getSavedMusicLoginState>> | null>(null)
+  const refreshSavedAuth = async () => {
+    try { savedAuth = await getSavedMusicLoginState() }
+    catch { savedAuth = null }
+  }
+  let refreshingProvider = $state<AnyListen.IPCSync.ExternalProvider | null>(null)
+
+  const refreshExternalState = async () => {
+    try { externalStates = await getExternalSyncState() } catch { /* older web builds have no native provider */ }
+  }
+  onMount(() => {
+    void refreshSavedAuth()
+    void refreshExternalState()
+    const timer = setInterval(() => { void refreshExternalState() }, 2500)
+    return () => { clearInterval(timer) }
+  })
+  const providerStatus = (provider: AnyListen.IPCSync.ExternalProvider, enabled: boolean, loginMessage: string) => {
+    // A saved credential and a successful playlist sync are different facts.
+    // A login cancellation must not be hidden behind an older sync result.
+    if (loginMessage) return loginMessage
+    const state = externalStates?.[provider]
+    if (state?.status === 'syncing') return '正在同步歌单…'
+    if (state?.status === 'error') return '歌单同步失败：' + (state.error || '未知错误')
+    if (state?.status === 'success') return '歌单同步成功：' + dateFormat(state.lastSuccess)
+    if (provider !== 'lx' && savedAuth && !savedAuth[provider]) return '未保存登录授权；请先点击登录'
+    return enabled ? '同步已启用；账号登录状态待验证' : '同步未启用'
+  }
+  const savedAuthLabel = (provider: 'netease' | 'qq' | 'kugou') =>
+    savedAuth?.[provider] ? '已保存授权' : '未保存授权'
+  const canRefresh = (provider: 'netease' | 'qq' | 'kugou', enabled: boolean) =>
+    enabled && Boolean(savedAuth?.[provider])
+  const refreshProvider = async (provider: AnyListen.IPCSync.ExternalProvider, dailyOnly = false) => {
+    if (refreshingProvider) return
+    refreshingProvider = provider
+    try {
+      await runExternalSyncNow(provider, dailyOnly)
+    } catch {
+      // The independent provider state contains the error; don't open a modal.
+    } finally {
+      await refreshExternalState()
+      refreshingProvider = null
+    }
+  }
 
   const runSync = async () => {
     await runSyncWebDAV(
@@ -198,6 +245,26 @@
         />
       </div>
     {/if}
+    {#if lxEnable}
+      <div class="gap-top">
+        <Checkbox
+          label="LX-N 双向同步（允许回写整库，最后写入覆盖，无自动备份）"
+          id="sync.lxWebdav.writeEnable"
+          checked={lxWriteEnable}
+          onchange={(val) => {
+            lxWriteEnable = val
+            // Every off/on transition re-establishes WebDAV as the initial source.
+            void updateSetting({ 'sync.lxWebdav.writeEnable': val, 'sync.lxWebdav.writeInitialized': false })
+          }}
+        />
+      </div>
+      <div class="gap-top">
+        <Btn disabled={refreshingProvider !== null} onclick={() => refreshProvider('lx')}>
+          {refreshingProvider === 'lx' ? '正在同步…' : '立即同步 LX-N'}
+        </Btn>
+        <span class="account-status">{providerStatus('lx', lxEnable, '')}</span>
+      </div>
+    {/if}
     {#if !import.meta.env.VITE_IS_DESKTOP}
       <div class="gap-top">
         <Checkbox
@@ -236,6 +303,16 @@
 {#if import.meta.env.VITE_IS_DESKTOP}
   <TitleContent name="音乐平台账号">
     <div class="settings-item-content">
+      <div class="gap-top">
+        <Checkbox label="保存每日推荐历史（每天自动归档一份）"
+          id="sync.daily.saveHistory"
+          checked={dailySaveHistory}
+          onchange={(val) => {
+            dailySaveHistory = val
+            void updateSetting({ 'sync.daily.saveHistory': val })
+          }}
+        />
+      </div>
       <div class="account-line">
         <span class="account-platform">网易云音乐</span>
         <Btn
@@ -243,21 +320,31 @@
           onclick={async () => {
             if (neteaseLoginBusy) return
             neteaseLoginBusy = true
-            neteaseLoginMessage = ''
+            neteaseLoginMessage = '正在打开官方登录窗口，请在窗口中完成授权'
             try {
               const loggedIn = await loginNeteaseInWindow()
               if (loggedIn) {
                 neteaseEnable = true
-                neteaseLoginMessage = '登录成功'
+                neteaseLoginMessage = '新登录已验证；歌单同步待确认'
+              } else {
+                neteaseLoginMessage = '登录窗口已关闭，尚未完成新的账号授权'
               }
+              await refreshSavedAuth()
             } catch (error) {
-              neteaseLoginMessage = (error as Error).message
+              neteaseLoginMessage = '账号登录失败：' + (error as Error).message
             } finally {
               neteaseLoginBusy = false
             }
           }}
-        >{neteaseLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{neteaseLoginMessage || (neteaseEnable ? '同步已启用' : '未登录')}</span>
+        >{neteaseLoginBusy ? '等待登录…' : '登录 / 重新登录'}</Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('netease', neteaseEnable)} onclick={() => refreshProvider('netease')}>
+          {refreshingProvider === 'netease' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('netease', neteaseEnable)} onclick={() => refreshProvider('netease', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-auth">{savedAuthLabel('netease')}</span>
+        <span class="account-status">{providerStatus('netease', neteaseEnable, neteaseLoginMessage)}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">QQ 音乐</span>
@@ -266,21 +353,31 @@
           onclick={async () => {
             if (qqLoginBusy) return
             qqLoginBusy = true
-            qqMessage = ''
+            qqMessage = '正在打开官方登录窗口，请在窗口中完成授权'
             try {
               const loggedIn = await loginQQMusicInWindow()
               if (loggedIn) {
                 qqEnable = true
-                qqMessage = '登录成功'
+                qqMessage = '新登录已验证；歌单同步待确认'
+              } else {
+                qqMessage = '登录窗口已关闭，尚未完成新的账号授权'
               }
+              await refreshSavedAuth()
             } catch (error) {
-              qqMessage = (error as Error).message
+              qqMessage = '账号登录失败：' + (error as Error).message
             } finally {
               qqLoginBusy = false
             }
           }}
-        >{qqLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{qqMessage || (qqEnable ? '同步已启用' : '未登录')}</span>
+        >{qqLoginBusy ? '等待登录…' : '登录 / 重新登录'}</Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('qq', qqEnable)} onclick={() => refreshProvider('qq')}>
+          {refreshingProvider === 'qq' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('qq', qqEnable)} onclick={() => refreshProvider('qq', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-auth">{savedAuthLabel('qq')}</span>
+        <span class="account-status">{providerStatus('qq', qqEnable, qqMessage)}</span>
       </div>
       <div class="account-line">
         <span class="account-platform">酷狗音乐</span>
@@ -289,21 +386,31 @@
           onclick={async () => {
             if (kugouLoginBusy) return
             kugouLoginBusy = true
-            kugouMessage = ''
+            kugouMessage = '正在打开官方登录窗口，请在窗口中完成授权'
             try {
               const loggedIn = await loginKugouInWindow()
               if (loggedIn) {
                 kugouEnable = true
-                kugouMessage = '登录成功'
+                kugouMessage = '新登录已验证；歌单同步待确认'
+              } else {
+                kugouMessage = '登录窗口已关闭，尚未完成新的账号授权'
               }
+              await refreshSavedAuth()
             } catch (error) {
-              kugouMessage = (error as Error).message
+              kugouMessage = '账号登录失败：' + (error as Error).message
             } finally {
               kugouLoginBusy = false
             }
           }}
-        >{kugouLoginBusy ? '登录中…' : '登录'}</Btn>
-        <span class="account-status">{kugouMessage || (kugouEnable ? '同步已启用' : '未登录')}</span>
+        >{kugouLoginBusy ? '等待登录…' : '登录 / 重新登录'}</Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('kugou', kugouEnable)} onclick={() => refreshProvider('kugou')}>
+          {refreshingProvider === 'kugou' ? '刷新中…' : '刷新歌单与日推'}
+        </Btn>
+        <Btn disabled={refreshingProvider !== null || !canRefresh('kugou', kugouEnable)} onclick={() => refreshProvider('kugou', true)}>
+          刷新每日推荐
+        </Btn>
+        <span class="account-auth">{savedAuthLabel('kugou')}</span>
+        <span class="account-status">{providerStatus('kugou', kugouEnable, kugouMessage)}</span>
       </div>
     </div>
   </TitleContent>
@@ -319,6 +426,7 @@
     padding: 6px 0;
   }
   .account-platform { width: 100px; }
+  .account-auth { font-size: 12px; opacity: 0.8; }
   .account-status { opacity: 0.7; }
   .gap-top {
     display: flex;

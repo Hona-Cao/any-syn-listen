@@ -44,6 +44,7 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
       'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
     )
     let finished = false
+    let loginPrepared = false
     let verifying = false
     let lastCheck = 0
 
@@ -69,7 +70,7 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
       reject(error)
     }
     const verify = async () => {
-      if (finished || verifying || Date.now() - lastCheck < 1500) return
+      if (!loginPrepared || finished || verifying || Date.now() - lastCheck < 1500) return
       lastCheck = Date.now()
       verifying = true
       try {
@@ -109,8 +110,8 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
         verifying = false
       }
     }
-    const onCookieChanged = (_event: Electron.Event, cookie: Electron.Cookie) => {
-      if (['MUSIC_U', '__csrf', 'MUSIC_A'].includes(cookie.name)) void verify()
+    const onCookieChanged = (_event: Electron.Event, cookie: Electron.Cookie, _cause: string, removed: boolean) => {
+      if (!removed && ['MUSIC_U', '__csrf', 'MUSIC_A'].includes(cookie.name)) void verify()
     }
     const poll = setInterval(() => { void verify() }, 4000)
     authSession.cookies.on('changed', onCookieChanged)
@@ -118,10 +119,21 @@ export const openNeteaseLoginWindow = (): Promise<boolean> => {
     win.webContents.on('did-navigate', () => { void verify() })
     win.webContents.on('did-navigate-in-page', () => { void verify() })
     win.on('closed', () => { finish(false) })
-    void win.loadURL('https://music.163.com/m/login').catch((error: Error) => {
-      fail(new Error('无法打开网易云官方登录窗口：' + error.message))
-    })
-    void verify() // Also reuses valid sessions after a previous app restart.
+    // Clicking 登录 is an explicit interactive re-authentication request.
+    // Previously an old Chromium MUSIC_U cookie was checked immediately and
+    // the popup closed before the user could actually log in or switch account.
+    // Preserve the separately encrypted vault entry until NEW validation
+    // succeeds, but start the login BrowserWindow with clean Chromium cookies.
+    void (async () => {
+      try {
+        await authSession.clearStorageData({ storages: ['cookies', 'localstorage'] })
+        if (finished) return
+        loginPrepared = true
+        await win.loadURL('https://music.163.com/m/login')
+      } catch (error) {
+        fail(new Error('无法打开网易云官方登录窗口：' + (error as Error).message))
+      }
+    })()
   }).finally(() => { pendingLogin = undefined })
   return pendingLogin
 }
