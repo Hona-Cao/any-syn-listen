@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  parseLXDocument, materializeLXDocument, removeLXUserListsFromDocument, commitLXUserDeletion, signatureOfLXLocalLists, datedLXRecommendations, planLXDirection,
+  parseLXDocument, materializeLXDocument, removeLXUserListsFromDocument, commitLXUserDeletion, parseDeletedLXMirrorMarkers, signatureOfLXLocalLists, datedLXRecommendations, planLXDirection,
 } from '../../shared/app/modules/sync/external/lxLibrary.ts'
 
 const source = () => ({
@@ -254,4 +254,15 @@ test('already-deleted LX source IDs do not rewrite unrelated phone data', async 
     undefined, () => 8000)
   assert.equal(result, remote)
   assert.equal(uploads, 0)
+})
+
+test('native WebDAV ghost cannot become an LX upload after source deletion is confirmed', () => {
+  const marker = 'lx-webdav:/LX_Music:user:old'
+  const deleted = parseDeletedLXMirrorMarkers(JSON.stringify([marker]))
+  // The native snapshot may reintroduce the entire old database row.
+  const restoredNativeRow = { marker, name: 'LX N · 旧歌单' }
+  const localLXUploadCandidate = !deleted.has(restoredNativeRow.marker)
+  assert.equal(localLXUploadCandidate, false)
+  assert.equal(parseDeletedLXMirrorMarkers('[]').has(marker), false)
+  assert.equal(parseDeletedLXMirrorMarkers('{broken').size, 0)
 })

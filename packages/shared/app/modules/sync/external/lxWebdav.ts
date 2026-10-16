@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto'
 
 import { WebDAVClient } from '@any-listen/nodejs/webdav-client'
 
+import { getSettings } from '../../../common'
 import { workers } from '../../worker'
 import { parseLXWebDAVPlaylists } from './lxConvert'
-import { commitLXUserDeletion, materializeLXDocument, parseLXDocument, planLXDirection, signatureOfLXLocalLists, type LXLocalList } from './lxLibrary'
+import { commitLXUserDeletion, materializeLXDocument, parseDeletedLXMirrorMarkers, parseLXDocument, planLXDirection, signatureOfLXLocalLists, type LXLocalList } from './lxLibrary'
 import { applyExternalMirrors } from './mirror'
 
 export interface LXWebDAVOptions {
@@ -21,11 +22,12 @@ type MarkedMeta = AnyListen.List.UserListInfoByGeneralMeta & { externalMirror?: 
 
 const collectLXLists = async (namespace: string): Promise<LXLocalList[]> => {
   const userLists = (await workers.dbService.getAllUserLists()).userList
+  const deletedSourceMarkers = parseDeletedLXMirrorMarkers(getSettings()['sync.external.deletedSourceMirrors'])
   const results: LXLocalList[] = []
   for (const item of userLists) {
     if (item.type !== 'general') continue
     const marker = (item.meta as MarkedMeta).externalMirror
-    if (!marker?.startsWith(namespace + ':')) continue
+    if (!marker?.startsWith(namespace + ':') || deletedSourceMarkers.has(marker)) continue
     const songs = await workers.dbService.getListMusics(item.id)
     results.push({
       key: marker.slice(namespace.length + 1),

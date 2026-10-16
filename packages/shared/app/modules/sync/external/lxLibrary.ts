@@ -240,6 +240,23 @@ export const commitLXUserDeletion = async (
   return readback
 }
 
+/**
+ * The AnyListen native WebDAV snapshot may still carry old LX mirrors.
+ * A source deletion recorded after a confirmed LX remote commit is stronger
+ * than those stale local rows: they must NOT be uploaded as new LX playlists.
+ */
+export const parseDeletedLXMirrorMarkers = (raw: string): Set<string> => {
+  try {
+    const items: unknown = JSON.parse(raw)
+    return new Set(Array.isArray(items)
+      ? items.filter((v): v is string =>
+        typeof v === 'string' && v.startsWith('lx-webdav:') && v.length <= 512)
+      : [])
+  } catch {
+    return new Set()
+  }
+}
+
 /** Archiving only recognizes source-dated daily recommendation lists. */
 export const datedLXRecommendations = (lists: Array<{ key: string; name: string }>): Set<string> => {
   const dates = lists.map(list => {
