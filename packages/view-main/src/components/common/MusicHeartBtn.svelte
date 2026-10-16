@@ -4,6 +4,7 @@
   import { addListMusics, removeListMusics } from '@/modules/musicLibrary/actions'
   import { musicLibraryEvent } from '@/modules/musicLibrary/store/event'
   import { checkCollectMusic } from '@/modules/player/store/actions'
+  import { reportSongPreference } from '@/modules/preferences/report'
   import { t } from '@/plugins/i18n'
   import { LIST_IDS } from '@any-listen/common/constants'
   import { onMount } from 'svelte'
@@ -45,6 +46,7 @@
       } else {
         await addListMusics(LIST_IDS.LOVE, [musicinfo])
       }
+      await reportSongPreference(musicinfo, loved ? 'unlike' : 'like')
     }}
     {min}
     {link}

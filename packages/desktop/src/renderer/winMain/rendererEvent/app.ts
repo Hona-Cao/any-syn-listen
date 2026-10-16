@@ -10,6 +10,9 @@ import { openNeteaseLoginWindow } from '@/modules/neteaseLogin'
 import { openQQMusicLoginWindow } from '@/modules/qqMusicLogin'
 import { openKugouLoginWindow } from '@/modules/kugouLogin'
 import { readAccountSecret } from '@/modules/accountVault'
+import { readSecureNeteaseCookie } from '@/modules/neteaseLogin'
+import { requestNetease } from '@any-listen/app/modules/sync/external/neteaseSession'
+import { planPlatformPreference } from '@any-listen/app/modules/sync/external/platformPreference'
 import { requestMusicSMSCode, loginMusicWithSMSCode } from '@/modules/musicPhoneAuth'
 import { clipboardReadText, clipboardWriteText, exitApp, openDirInExplorer, openUrl } from '@/shared/electron'
 import { getFonts } from '@/shared/fontManage'
@@ -42,6 +45,23 @@ export const createExposeApp = () => {
         netease: Boolean(netease || appState.appSetting['sync.netease.cookie']),
         qq: Boolean(qq),
         kugou: Boolean(kugou),
+      }
+    },
+    async submitPlatformPreference(_event, input) {
+      const plan = planPlatformPreference(input)
+      if (plan.kind === 'local-only') return { status: 'unsupported' as const, platform: plan.platform }
+      const cookie = appState.appSetting['sync.netease.cookie'] || await readSecureNeteaseCookie()
+      if (!/(?:^|;\s*)MUSIC_U=/.test(cookie)) {
+        return { status: 'login_required' as const, platform: plan.platform }
+      }
+      try {
+        await requestNetease('song/like', cookie, {
+          trackId: plan.musicId, like: plan.liked, time: 3, alg: 'itembased',
+        })
+        return { status: 'sent' as const, platform: plan.platform }
+      } catch {
+        // Do not leak tokens, cookies or raw provider responses to renderer.
+        return { status: 'failed' as const, platform: plan.platform }
       }
     },
     async loginNeteaseInWindow() {

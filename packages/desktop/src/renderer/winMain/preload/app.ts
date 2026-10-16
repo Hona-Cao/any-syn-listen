@@ -51,6 +51,9 @@ export const createClientApp = (main: MainCall) => {
     async getSavedMusicLoginState() {
       return main.getSavedMusicLoginState()
     },
+    async submitPlatformPreference(input) {
+      return main.submitPlatformPreference(input)
+    },
     async loginNeteaseInWindow() {
       return main.loginNeteaseInWindow()
     },

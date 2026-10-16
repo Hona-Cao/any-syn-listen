@@ -257,17 +257,55 @@ export const parseDeletedLXMirrorMarkers = (raw: string): Set<string> => {
   }
 }
 
-/** Archiving only recognizes source-dated daily recommendation lists. */
-export const datedLXRecommendations = (lists: Array<{ key: string; name: string }>): Set<string> => {
-  const dates = lists.map(list => {
-    const m = /^LX N · 每日推荐[\s_-]*[（(]?(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})[）)]?$/.exec(list.name)
-    if (!m) return null
-    const year = +m[1], month = +m[2], day = +m[3]
+/**
+ * Recognize LX-N's real Android daily save naming: "10_16_daily".
+ * Use a strict suffix and a valid calendar day, not vague "每日推荐"
+ * substrings that could misclassify user-created lists.
+ */
+export const isLXSavedDailyName = (value: string): boolean => {
+  const name = value.replace(/^LX N · /, '')
+  const android = /^(\d{1,2})_(\d{1,2})_daily$/i.exec(name)
+  if (android) {
+    const month = Number(android[1]), day = Number(android[2])
+    const millis = Date.UTC(2000, month - 1, day)
+    return month >= 1 && month <= 12 && new Date(millis).getUTCMonth() === month - 1 &&
+      new Date(millis).getUTCDate() === day
+  }
+  return /^每日推荐[\s_-]*[（(]?\d{4}[-/.]?\d{1,2}[-/.]?\d{1,2}[）)]?$/.test(name)
+}
+
+export const isLXSavedDailyList = (item: { key: string; name: string }): boolean =>
+  item.key.startsWith('user:') && item.key.length > 5 && isLXSavedDailyName(item.name)
+
+export const datedLXRecommendations = (
+  lists: Array<{ key: string; name: string }>, now = new Date()
+): Set<string> => {
+  const historical = new Set<string>()
+  const realDates: Array<{ key: string; date: number }> = []
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric',
+  }).formatToParts(now)
+  const todayMonth = Number(parts.find(p => p.type === 'month')?.value)
+  const todayDay = Number(parts.find(p => p.type === 'day')?.value)
+  for (const item of lists) {
+    if (!isLXSavedDailyList(item)) continue
+    const plain = item.name.replace(/^LX N · /, '')
+    const android = /^(\d{1,2})_(\d{1,2})_daily$/i.exec(plain)
+    if (android) {
+      // Yearless Android snapshots: all dates except today are old history.
+      if (Number(android[1]) !== todayMonth || Number(android[2]) !== todayDay) historical.add(item.key)
+      continue
+    }
+    const m = /^每日推荐[\s_-]*[（(]?(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})[）)]?$/.exec(plain)
+    if (!m) continue
+    const year = Number(m[1]), month = Number(m[2]), day = Number(m[3])
     const date = Date.UTC(year, month - 1, day)
-    if (new Date(date).getUTCFullYear() !== year || new Date(date).getUTCMonth() !== month - 1 ||
-      new Date(date).getUTCDate() !== day) return null
-    return { key: list.key, date }
-  }).filter((item): item is { key: string; date: number } => item !== null)
-  const newest = Math.max(0, ...dates.map(item => item.date))
-  return new Set(dates.filter(item => item.date < newest).map(item => item.key))
+    if (new Date(date).getUTCFullYear() !== year ||
+        new Date(date).getUTCMonth() !== month - 1 ||
+        new Date(date).getUTCDate() !== day) continue
+    realDates.push({ key: item.key, date })
+  }
+  const newest = Math.max(0, ...realDates.map(item => item.date))
+  for (const item of realDates) if (item.date < newest) historical.add(item.key)
+  return historical
 }

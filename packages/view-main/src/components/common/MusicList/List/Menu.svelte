@@ -14,6 +14,7 @@
   type ListType = 'default' | AnyListen.List.UserListType
   let {
     source,
+    readOnlySource = false,
     type,
     deviceid,
     onplay,
@@ -21,6 +22,7 @@
     oncancelmulti,
   }: {
     source: AnyListen.Player.SourceType
+    readOnlySource?: boolean
     type: ListType
     deviceid: string | null
     onplay: (musicInfo: AnyListen.Music.MusicInfo) => Promise<void>
@@ -53,7 +55,7 @@
     // let sourceDetail = !!musicSdk[musicInfo.source]?.getMusicDetailPageUrl
     // let download = assertApiSupport(musicInfo.source) && musicInfo.source != 'local'
     let dislike = hasDislike(selectInfo.musicInfo)
-    const local = source === 'local'
+    const local = source === 'local' && !readOnlySource
     const localList = deviceid != null
     const notLocalList = localList && deviceid != appState.machineId
     const notLocalMusic = notLocalList || selectInfo.musicInfo.meta.deviceId != appState.machineId

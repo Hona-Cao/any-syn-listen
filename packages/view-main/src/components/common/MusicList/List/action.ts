@@ -2,6 +2,7 @@ import { buildMusicName } from '@any-listen/common/tools'
 
 import { showSimpleConfirmModal } from '@/components/apis/dialog'
 import { addInfo } from '@/modules/dislikeList/actions'
+import { reportSongPreference } from '@/modules/preferences/report'
 import { getListMusics, removeListMusics } from '@/modules/musicLibrary/actions'
 import { updateListMusicsPosition } from '@/modules/musicLibrary/store/actions'
 import { addPlayLaterMusic, playList, playOnlineList } from '@/modules/player/store/actions'
@@ -111,6 +112,7 @@ export const dislikeMusic = async (musicInfo: AnyListen.Music.MusicInfo) => {
   )
   if (!confirm) return
   await addInfo([{ name: musicInfo.name, singer: musicInfo.singer }])
+  await reportSongPreference(musicInfo, 'dislike')
 }
 
 export const removeMusic = async (

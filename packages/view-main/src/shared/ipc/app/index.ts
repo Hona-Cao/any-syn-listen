@@ -2,6 +2,8 @@ import { showFileSaveModal, showFileSelectModal } from '../fs/fileSelectModal'
 import { ipc } from '../ipc'
 
 export const getSavedMusicLoginState = (): Promise<{ netease: boolean; qq: boolean; kugou: boolean }> => ipc.getSavedMusicLoginState()
+export const submitPlatformPreference: AnyListen.IPC.ServerIPC['submitPlatformPreference'] = (input) =>
+  ipc.submitPlatformPreference(input)
 export const loginQQMusicInWindow = async (): Promise<boolean> => ipc.loginQQMusicInWindow()
 export const loginKugouInWindow = async (): Promise<boolean> => ipc.loginKugouInWindow()
 export const requestMusicSMSCode = (platform: 'netease' | 'kugou', phone: string) => ipc.requestMusicSMSCode(platform, phone)

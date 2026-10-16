@@ -25,7 +25,7 @@ export const resolvePlaylistContext = <T extends SelectableList>(
     : [clicked]
 }
 
-export type PlaylistBulkAction = 'archive' | 'restore' | 'remove'
+export type PlaylistBulkAction = 'archive' | 'restore' | 'remove' | 'copyLocal'
 
 /** Keyboard deletion is only actionable for a nonempty, idle playlist selection. */
 export const isPlaylistDeleteShortcut = (key: string, selectedCount: number, busy: boolean): boolean =>

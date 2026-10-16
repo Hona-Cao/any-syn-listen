@@ -19,6 +19,7 @@
 
   let {
     source,
+    readOnlySource = false,
     listinfo,
     list,
     multimode = $bindable(),
@@ -31,6 +32,7 @@
     listinfo: ListInfo
     list: AnyListen.Music.MusicInfo[]
     source: AnyListen.Player.SourceType
+    readOnlySource?: boolean
     multimode: boolean
     finding: boolean
     duplicate: boolean
@@ -197,6 +199,7 @@
     <Menu
       bind:this={menu}
       {source}
+      {readOnlySource}
       type={listinfo.type}
       deviceid={listinfo.type == 'local' ? listinfo.listMeta.deviceId : null}
       onplay={async (musicInfo) => {

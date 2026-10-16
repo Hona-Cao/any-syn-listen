@@ -2,6 +2,7 @@
   import ListItem from './ListItem.svelte'
   import { isPlaylistDeleteShortcut, resolvePlaylistContext, type PlaylistBulkAction } from './selection'
   import { parseHiddenMirrorMarkers } from './mirrorVisibility'
+  import { isAccountMirrorMarker, isLXDailyArchiveMirror } from './mirrorPolicy'
   import Menu from './Menu.svelte'
   import { useListItemHeight } from '@/modules/app/reactive.svelte'
   import type { Position } from '@/components/base/Menu.svelte'
@@ -11,7 +12,7 @@
   import { defaultLists, useUserList } from '@/modules/musicLibrary/reactive.svelte'
   import type { ComponentExports } from 'svelte'
   import { sortable } from '@/shared/compositions/sortable.svelte'
-  import { archiveUserLists, createLXUserList, removeUserLists, restoreHiddenMirrors, updateUserListPosition } from './action'
+  import { archiveUserLists, copyAccountMirrorsToLocal, createLXUserList, removeUserLists, restoreHiddenMirrors, updateUserListPosition } from './action'
   import { showListEditModal } from '@/components/apis/listEditModal'
   import { settingState } from '@/modules/setting/store/state'
   import Btn from '@/components/base/Btn.svelte'
@@ -36,6 +37,7 @@
       (meta.externalMirror && hiddenMirrorMarkers.has(meta.externalMirror)))
   }
   let showArchived = $state(false)
+  let showDailyHistory = $state(false)
   let selectedIds = $state<string[]>([])
   let anchor = $state<string | null>(null)
   let busy = $state(false)
@@ -56,12 +58,25 @@
     }
   }
   const archiveCount = $derived(userLists.val.filter(item => !isSourceDeleted(item) && isHidden(item)).length)
+  const dailyHistoryLists = $derived(userLists.val.filter(item =>
+    !isSourceDeleted(item) && isLXDailyArchiveMirror(
+      (item.meta as { externalMirror?: string }).externalMirror, item.name
+    )
+  ))
   const lists = $derived([
     ...$defaultLists,
-    ...userLists.val.filter(item => !isSourceDeleted(item) && !isHidden(item)),
-    ...(showArchived ? userLists.val.filter(item => !isSourceDeleted(item) && isHidden(item)) : []),
+    ...(showDailyHistory
+      ? dailyHistoryLists
+      : [
+          ...userLists.val.filter(item => !isSourceDeleted(item) && !isHidden(item)),
+          ...(showArchived ? userLists.val.filter(item => !isSourceDeleted(item) && isHidden(item)) : []),
+        ]),
   ])
   const selectedItems = $derived(lists.filter(item => item.type === 'general' && selectedIds.includes(item.id)))
+  const selectedAccountItems = $derived(selectedItems.filter(item =>
+    isAccountMirrorMarker((item.meta as { externalMirror?: string }).externalMirror)
+  ))
+  const hasReadOnlySelection = $derived(selectedAccountItems.length > 0)
   let activeIndex = $state(-1)
 
   const selectItem = (item: AnyListen.List.MyListInfo, event: MouseEvent) => {
@@ -97,7 +112,8 @@
     if (busy || !targets.length) return
     busy = true
     try {
-      if (action === 'archive') await archiveUserLists(targets, true)
+      if (action === 'copyLocal') await copyAccountMirrorsToLocal(targets)
+      else if (action === 'archive') await archiveUserLists(targets, true)
       else if (action === 'restore') {
         await archiveUserLists(targets, false)
         await restoreHiddenMirrors(targets)
@@ -145,6 +161,10 @@
           selectedIds = []
           anchor = null
         } else if (isPlaylistDeleteShortcut(event.key, selectedItems.length, busy)) {
+          if (hasReadOnlySelection) {
+            showNotify('第三方平台歌单只读，不能批量删除；请先取消选择平台歌单')
+            return
+          }
           // Only run from the focused playlist panel, not an unrelated input
           // or a portal menu. Delete shares the exact batch-delete pathway.
           if (event.target instanceof HTMLElement &&
@@ -158,9 +178,14 @@
       {#if selectedItems.length}
         <div class="batch-bar">
           <span>已选 {selectedItems.length} 张</span>
-          <Btn min disabled={busy} onclick={() => batch('archive')}>归档</Btn>
-          <Btn min disabled={busy} onclick={() => batch('restore')}>恢复</Btn>
-          <Btn min disabled={busy} onclick={() => batch('remove')}>删除</Btn>
+          {#if selectedAccountItems.length}
+            <Btn min disabled={busy} onclick={() => batch('copyLocal', selectedAccountItems)}>
+              另存 {selectedAccountItems.length} 张为本地歌单
+            </Btn>
+          {/if}
+          <Btn min disabled={busy || hasReadOnlySelection} onclick={() => batch('archive')}>归档</Btn>
+          <Btn min disabled={busy || hasReadOnlySelection} onclick={() => batch('restore')}>恢复</Btn>
+          <Btn min disabled={busy || hasReadOnlySelection} onclick={() => batch('remove')}>删除</Btn>
           <Btn min disabled={busy} onclick={() => { selectedIds = [] }}>清除选择</Btn>
         </div>
       {/if}
@@ -169,7 +194,16 @@
           <Btn min disabled={busy} onclick={newLXList}>+ 新建 LX-N 歌单</Btn>
         </div>
       {/if}
-      {#if archiveCount}
+      {#if dailyHistoryLists.length}
+        <button class="archive-toggle" onclick={() => {
+          showDailyHistory = !showDailyHistory
+          selectedIds = []
+          anchor = null
+        }}>
+          {showDailyHistory ? '返回全部歌单' : '筛选 LX-N 每日日推存档'}（{dailyHistoryLists.length}）
+        </button>
+      {/if}
+      {#if archiveCount && !showDailyHistory}
         <button class="archive-toggle" onclick={() => {
           showArchived = !showArchived
           selectedIds = []
