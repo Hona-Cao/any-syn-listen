@@ -41,12 +41,15 @@
     onclick={async (evt) => {
       evt.stopPropagation()
       if (!musicinfo) return
-      if (loved) {
+      // The library-change event may update "loved" during the await.
+      // Capture the user's action BEFORE mutating local favorite state.
+      const wasLoved = loved
+      if (wasLoved) {
         await removeListMusics(LIST_IDS.LOVE, [musicinfo.id])
       } else {
         await addListMusics(LIST_IDS.LOVE, [musicinfo])
       }
-      await reportSongPreference(musicinfo, loved ? 'unlike' : 'like')
+      await reportSongPreference(musicinfo, wasLoved ? 'unlike' : 'like')
     }}
     {min}
     {link}
