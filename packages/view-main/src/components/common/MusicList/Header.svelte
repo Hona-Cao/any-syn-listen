@@ -8,6 +8,7 @@
   import BtnMerge from '@/components/base/BtnMerge.svelte'
   let {
     source,
+    readOnlySource = false,
     disabled,
     listinfo,
     musiccount,
@@ -24,6 +25,7 @@
     onsort,
   }: {
     source: AnyListen.Player.SourceType
+    readOnlySource?: boolean
     disabled: boolean
     listinfo: ListInfo
     musiccount: number
@@ -102,7 +104,7 @@
         <Btn outline={!finding} icon onclick={onfind} aria-label={finding ? $t('find_music_exit') : $t('find_music')}>
           <SvgIcon name="search" />
         </Btn>
-        {#if source === 'local'}
+        {#if source === 'local' && !readOnlySource}
           <Btn disabled={!musiccount} outline icon onclick={onduplicate} aria-label={$t('duplicate_music')}>
             <SvgIcon name="duplicate" />
           </Btn>

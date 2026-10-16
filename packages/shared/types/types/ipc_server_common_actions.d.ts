@@ -23,6 +23,15 @@ export declare type ServerCommonActions = WarpPromiseRecord<{
 
   /** Open a sandboxed official NetEase login page and capture session in main process. */
   getSavedMusicLoginState: () => { netease: boolean; qq: boolean; kugou: boolean }
+  /** User-initiated song preference only; never edits source-owned playlists. */
+  submitPlatformPreference: (input: {
+    source: string
+    musicId: string
+    action: 'like' | 'unlike' | 'dislike'
+  }) => {
+    status: 'sent' | 'unsupported' | 'login_required' | 'failed'
+    platform: string
+  }
   loginNeteaseInWindow: () => boolean
   loginQQMusicInWindow: () => boolean
   loginKugouInWindow: () => boolean

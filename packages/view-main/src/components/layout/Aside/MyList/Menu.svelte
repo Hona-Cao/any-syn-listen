@@ -5,6 +5,7 @@
   import { LIST_IDS } from '@any-listen/common/constants'
   import { importLocalFile, importLocalFileFolder, removeUserList, syncUserList } from './action'
   import type { PlaylistBulkAction } from './selection'
+import { isAccountMirrorMarker } from './mirrorPolicy'
   import { showListEditModal } from '@/components/apis/listEditModal'
   import { musicLibraryEvent } from '@/modules/musicLibrary/store/event'
   import { appState } from '@/modules/app/store/state'
@@ -32,6 +33,7 @@
     | 'remove'
     | 'archive'
     | 'restore'
+    | 'copyLocal'
   let menuVisible = $state.raw(false)
   let menuLocation = $state.raw({ x: 0, y: 0 })
   let menus = $state.raw<MenuList<MenuType>>([])
@@ -42,8 +44,17 @@
 
   const setMenu = () => {
     if (contextSelection.length > 1) {
-      // Never expose single-playlist editing actions for a multi-selection:
-      // rename/import/sync has no well-defined group semantics.
+      const accounts = contextSelection.filter(item =>
+        isAccountMirrorMarker((item.meta as { externalMirror?: string }).externalMirror)
+      )
+      if (accounts.length) {
+        menus = [
+          { action: 'copyLocal', label: '另存 ' + accounts.length + ' 张平台歌单为本地副本' },
+          { action: 'remove', disabled: true, label: '不可删除：选中内容包含只读平台歌单' },
+        ]
+        return
+      }
+      // Single-playlist edit/import is never exposed for batch operations.
       const total = contextSelection.length
       const fetching = contextSelection.some((item) => fetchingListStatus.has(item.id))
       menus = [
@@ -78,6 +89,14 @@
     const disabledUpdate = fetching || (info.type == 'local' && info.meta.deviceId != appState.machineId)
     const isGeneral = GENERAL_LIST_TYPES.includes(info.type)
     const isUserGeneral = info.type === 'general'
+    if (isUserGeneral && isAccountMirrorMarker(
+      (info.meta as { externalMirror?: string }).externalMirror
+    )) {
+      menus = [
+        { action: 'copyLocal', label: '另存为本地歌单（可编辑副本）' },
+      ]
+      return
+    }
     const meta = info.meta as { archived?: boolean; externalMirrorHidden?: boolean }
     const hidden = Boolean(meta.archived || meta.externalMirrorHidden)
 
@@ -117,7 +136,11 @@
 
   const handleClick = (menu: MenuItem<MenuType>) => {
     if (contextSelection.length > 1) {
-      if (menu.action === 'archive' || menu.action === 'restore' || menu.action === 'remove') {
+      if (menu.action === 'copyLocal') {
+        onbatchaction?.('copyLocal', contextSelection.filter(item =>
+          isAccountMirrorMarker((item.meta as { externalMirror?: string }).externalMirror)
+        ))
+      } else if (menu.action === 'archive' || menu.action === 'restore' || menu.action === 'remove') {
         onbatchaction?.(menu.action, [...contextSelection])
       }
       menuVisible = false
@@ -138,6 +161,9 @@
         break
       case 'update':
         void syncUserList(info!)
+        break
+      case 'copyLocal':
+        if (info?.type === 'general') onbatchaction?.('copyLocal', [info])
         break
       case 'archive':
       case 'restore':

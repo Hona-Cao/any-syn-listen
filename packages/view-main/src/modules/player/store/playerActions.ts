@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
+import { reportSongPreference } from '@/modules/preferences/report'
 // import { checkMusicFileAvailable } from '@renderer/utils/music'
 
 import { LIST_IDS } from '@any-listen/common/constants'
@@ -784,15 +785,19 @@ export const checkCollectMusic = async (musicId?: string) => {
  */
 export const collectMusic = async () => {
   if (!playerState.playMusicInfo) return
-  return addListMusics(LIST_IDS.LOVE, [playerState.playMusicInfo.musicInfo])
+  const song = playerState.playMusicInfo.musicInfo
+  await addListMusics(LIST_IDS.LOVE, [song])
+  await reportSongPreference(song, 'like')
 }
 
 /**
  * 取消收藏当前播放的歌曲
  */
-export const uncollectMusic = () => {
+export const uncollectMusic = async () => {
   if (!playerState.playMusicInfo) return
-  void removeListMusics(LIST_IDS.LOVE, [playerState.playMusicInfo.musicInfo.id])
+  const song = playerState.playMusicInfo.musicInfo
+  await removeListMusics(LIST_IDS.LOVE, [song.id])
+  await reportSongPreference(song, 'unlike')
 }
 
 /**
@@ -802,6 +807,7 @@ export const dislikeMusic = async () => {
   if (!playerState.playMusicInfo) return
   const minfo = playerState.playMusicInfo.musicInfo
   await addInfo([{ name: minfo.name, singer: minfo.singer }])
+  await reportSongPreference(minfo, 'dislike')
   await skipNext()
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import SearchInput from '@/components/material/SearchInput.svelte'
+  import { showNotify } from '@/components/apis/notify'
   import { tipSearch as search } from '@/modules/resource/search/tip'
   import { getLocation, query } from '@/plugins/routes'
   import { debounce } from '@/shared'
@@ -73,7 +74,10 @@
   }, 50)
 
   const handleSubmit = (text: string) => {
-    if (!onlineResourceAvailable.val) return
+    if (!onlineResourceAvailable.val) {
+      showNotify('在线搜索未启用：请到 设置 → 在线资源 开启，并确认有歌曲搜索扩展')
+      return
+    }
     submitted = true
     text = text.trim()
     currentText = text
@@ -160,7 +164,7 @@
   --width="52%"
   --max-width="38rem"
   --min-width="15rem"
-  placeholder={$t('search.placeholder')}
+  placeholder={onlineResourceAvailable.val ? $t('search.placeholder') : '在线搜索未启用：设置 → 在线资源'}
   bind:this={searchInput}
   oninput={(text: string) => {
     tipSearch(text.trim())

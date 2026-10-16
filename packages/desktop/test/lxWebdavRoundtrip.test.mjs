@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  parseLXDocument, materializeLXDocument, removeLXUserListsFromDocument, commitLXUserDeletion, parseDeletedLXMirrorMarkers, signatureOfLXLocalLists, datedLXRecommendations, planLXDirection,
+  parseLXDocument, materializeLXDocument, removeLXUserListsFromDocument, commitLXUserDeletion, parseDeletedLXMirrorMarkers, signatureOfLXLocalLists, datedLXRecommendations, isLXSavedDailyName, isLXSavedDailyList, planLXDirection,
 } from '../../shared/app/modules/sync/external/lxLibrary.ts'
 
 const source = () => ({
@@ -265,4 +265,40 @@ test('native WebDAV ghost cannot become an LX upload after source deletion is co
   assert.equal(localLXUploadCandidate, false)
   assert.equal(parseDeletedLXMirrorMarkers('[]').has(marker), false)
   assert.equal(parseDeletedLXMirrorMarkers('{broken').size, 0)
+})
+
+test('recognizes real LX Android month_day_daily save format and rejects ordinary playlists', () => {
+  for (const name of ['LX N · 10_16_daily','LX N · 1_5_daily','LX N · 02_29_daily','LX N · 每日推荐 2026-10-15']) {
+    assert.equal(isLXSavedDailyName(name), true, name)
+  }
+  for (const name of ['LX N · 13_10_daily','LX N · 2_30_daily','LX N · 10_16_daily_copy','LX N · 我的每日推荐 2026-10-15','网易云·每日推荐 2026-10-15']) {
+    assert.equal(isLXSavedDailyName(name), false, name)
+  }
+  assert.equal(isLXSavedDailyList({key:'user:123',name:'LX N · 10_16_daily'}),true)
+  assert.equal(isLXSavedDailyList({key:'default',name:'LX N · 10_16_daily'}),false)
+})
+test('keeps current China-time LX daily visible and archives older Android days', () => {
+  const keys=datedLXRecommendations([
+    {key:'user:today',name:'LX N · 10_16_daily'},
+    {key:'user:yesterday',name:'LX N · 10_15_daily'},
+    {key:'user:jan',name:'LX N · 1_20_daily'},
+    {key:'user:other',name:'LX N · 日常收藏'},
+  ],new Date('2026-10-16T08:00:00+08:00'))
+  assert.deepEqual([...keys].sort(),['user:jan','user:yesterday'])
+})
+
+test('one LX remote commit can delete dozens of old mobile daily snapshots', () => {
+  const raw = source()
+  const history = Array.from({length:36},(_,i)=>({
+    id:'history_'+i,
+    name:'10_'+String(i%28+1)+'_daily',
+    list:[{id:'wy_'+(i+100),name:'历史日推歌曲'}],
+  }))
+  raw.data.userList.push(...history)
+  const doc = parseLXDocument(JSON.stringify(raw))
+  const next = removeLXUserListsFromDocument(doc, history.map(item=>item.id), 15000)
+  assert.deepEqual(next.data.userList.map(item=>item.id), ['old','new'])
+  assert.deepEqual(next.data.defaultList,doc.data.defaultList)
+  assert.deepEqual(next.data.loveList,doc.data.loveList)
+  assert.equal(next.lastModified,15000)
 })

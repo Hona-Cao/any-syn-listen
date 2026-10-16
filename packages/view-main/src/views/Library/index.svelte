@@ -16,6 +16,7 @@
   import { LIST_IDS } from '@any-listen/common/constants'
   import { resourceList } from '@/modules/extension/reactive.svelte'
   import { LIST_PIC_ICON } from '@/shared/constants'
+  import { isAccountMirrorMarker } from '@/components/layout/Aside/MyList/mirrorPolicy'
 
   let list = $state.raw<AnyListen.Music.MusicInfo[]>([])
   let musicList = $state<ComponentExports<typeof MusicList> | null>(null)
@@ -87,6 +88,9 @@
     }
   }
   const targetListInfo = $derived(getTargetActiveListInfo($userListsAll, $query.id))
+  const readOnlySource = $derived(isAccountMirrorMarker(
+    (targetListInfo?.meta as { externalMirror?: string } | undefined)?.externalMirror
+  ))
   const listCover = $derived(useListCover(targetListInfo))
   const listInfo = $derived(buildActiveListInfo($resourceList, targetListInfo, listCover.val))
 
@@ -149,7 +153,7 @@
 
 <div class="view-container container">
   {#if listInfo}
-    <MusicList bind:this={musicList} listinfo={listInfo} {list} onscroll={handleScroll} />
+    <MusicList bind:this={musicList} listinfo={listInfo} {readOnlySource} {list} onscroll={handleScroll} />
   {/if}
 </div>
 

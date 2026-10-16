@@ -14,6 +14,7 @@
     loading = false,
     error = false,
     source = 'local',
+    readOnlySource = false,
     showheader = true,
     miniheader = false,
     list,
@@ -26,6 +27,7 @@
     loading?: boolean
     error?: boolean
     source?: AnyListen.Player.SourceType
+    readOnlySource?: boolean
     showheader?: boolean
     miniheader?: boolean
     list: AnyListen.Music.MusicInfo[]
@@ -59,6 +61,7 @@
         disabled={loading || error}
         musiccount={list.length}
         {source}
+        {readOnlySource}
         saveable={listinfo.saveable}
         {multimode}
         {finding}
@@ -101,6 +104,7 @@
         {listinfo}
         musiccount={list.length}
         {source}
+        {readOnlySource}
         saveable={listinfo.saveable}
         {multimode}
         {finding}
@@ -144,6 +148,7 @@
     {listinfo}
     {list}
     {source}
+    {readOnlySource}
     {onscroll}
     bind:finding
     bind:multimode

@@ -6,6 +6,7 @@
   import { t } from '@/plugins/i18n'
   let {
     source,
+    readOnlySource = false,
     disabled,
     musiccount,
     multimode,
@@ -21,6 +22,7 @@
     onsort,
   }: {
     source: AnyListen.Player.SourceType
+    readOnlySource?: boolean
     disabled: boolean
     musiccount: number
     multimode: boolean
@@ -83,7 +85,7 @@
     <Btn min outline={!finding} icon onclick={onfind} aria-label={finding ? $t('find_music_exit') : $t('find_music')}>
       <SvgIcon name="search" />
     </Btn>
-    {#if source === 'local'}
+    {#if source === 'local' && !readOnlySource}
       <Btn min disabled={!musiccount} outline icon onclick={onduplicate} aria-label={$t('duplicate_music')}>
         <SvgIcon name="duplicate" />
       </Btn>

@@ -3,6 +3,7 @@ import { updateUserList, createUserList } from '@/modules/musicLibrary/store/lis
 import { generateIdSimple } from '@/shared'
 import { deleteLXPlaylistsNow } from '@/shared/ipc/sync'
 import { withHiddenMirrorMarkers } from './mirrorVisibility'
+import { assertWritablePlaylists, isAccountMirrorMarker, isLXDailyArchiveMirror } from './mirrorPolicy'
 
 import { showSimpleConfirmModal } from '@/components/apis/dialog'
 import { showNotify } from '@/components/apis/notify'
@@ -46,6 +47,9 @@ const updateMusicPosition = async (listId: string, ids: string[]) => {
 }
 
 export const importLocalFile = async (listInfo: AnyListen.List.MyListInfo) => {
+  if (isAccountMirrorMarker((listInfo.meta as { externalMirror?: string }).externalMirror)) {
+    throw new Error('第三方平台原始歌单只读；请先另存本地副本')
+  }
   const { canceled, filePaths } = await showOpenDialog({
     title: i18n.t('user_list__select_local_file'),
     properties: ['openFile', 'multiSelections'],
@@ -71,6 +75,9 @@ export const importLocalFile = async (listInfo: AnyListen.List.MyListInfo) => {
   showNotify(message)
 }
 export const importLocalFileFolder = async (listInfo: AnyListen.List.MyListInfo) => {
+  if (isAccountMirrorMarker((listInfo.meta as { externalMirror?: string }).externalMirror)) {
+    throw new Error('第三方平台原始歌单只读；请先另存本地副本')
+  }
   const { canceled, filePaths } = await showOpenDialog({
     title: i18n.t('user_list__select_local_file_folder'),
     properties: ['openDirectory'],
@@ -171,9 +178,47 @@ const rememberMirrorVisibility = async (
   }
 }
 
+/**
+ * Read-only account playlists can be copied into a NEW ordinary local list,
+ * preserving source song IDs while removing the externalMirror marker.
+ * The source list and its platform account are never modified.
+ */
+export const copyAccountMirrorsToLocal = async (items: AnyListen.List.MyListInfo[]) => {
+  if (!items.length || items.some(item => !isGeneral(item) ||
+      !isAccountMirrorMarker(marked(item).meta.externalMirror))) {
+    throw new Error('仅支持另存网易云、QQ、酷狗导入的只读歌单')
+  }
+  const created: string[] = []
+  for (const item of items) {
+    const musics = await getListMusics(item.id, true)
+    const id = generateIdSimple()
+    const now = Date.now()
+    const info: AnyListen.List.GeneralListInfo = {
+      id,
+      name: item.name + '（本地副本）',
+      type: 'general', parentId: null,
+      meta: {
+        createTime: now, updateTime: now, posTime: now,
+        playCount: 0, songCount: musics.length, pic: '', desc: '',
+      } as AnyListen.List.UserListInfoByGeneralMeta,
+    }
+    await createUserList({ position: -1, listInfos: [info] })
+    try {
+      if (musics.length) await addListMusics(id, musics)
+    } catch (err) {
+      await removeUserListRemote([id])
+      throw err
+    }
+    created.push(id)
+  }
+  showNotify('已另存 ' + created.length + ' 张歌单到本地；平台原歌单未修改')
+  return created
+}
+
 /** Archive is a local, reversible view state; it does not delete platform data. */
 export const archiveUserLists = async (items: AnyListen.List.MyListInfo[], archived: boolean) => {
   const eligible = items.filter(isGeneral)
+  assertWritablePlaylists(eligible.map(item => marked(item).meta.externalMirror))
   if (!eligible.length) return
   await updateUserList({
     lists: eligible.map(item => ({
@@ -204,6 +249,8 @@ export const restoreHiddenMirrors = async (items: AnyListen.List.MyListInfo[]) =
  */
 export const removeUserLists = async (items: AnyListen.List.MyListInfo[]) => {
   const eligible = items.filter(isGeneral)
+  // Validate the WHOLE batch before performing any destructive action.
+  assertWritablePlaylists(eligible.map(item => marked(item).meta.externalMirror))
   const hide: DecoratedList[] = []
   const remove: string[] = []
   const remoteLXUserIds: string[] = []
@@ -216,10 +263,12 @@ export const removeUserLists = async (items: AnyListen.List.MyListInfo[]) => {
   for (const info of eligible) {
     const item = marked(info)
     const marker = item.meta.externalMirror ?? ''
-    const isAccountMirror = /^(netease|qqmusic|kugou):/.test(marker)
     const isLXMirror = marker.startsWith('lx-webdav:')
     const lxSystem = isLXMirror && /:(default|love)$/.test(marker)
-    if (isAccountMirror || (isLXMirror && (!lxWritable || lxSystem))) {
+    if (isLXMirror && isLXDailyArchiveMirror(marker, item.name) && !lxWritable) {
+      throw new Error('删除 LX-N 日推存档须先开启并完成 LX-N 双向同步，否则只能留在手机端')
+    }
+    if (isLXMirror && (!lxWritable || lxSystem)) {
       // Account mirrors and read-only LX playlists are hidden permanently in
       // this desktop, never removed from their original provider.
       hide.push(item)
