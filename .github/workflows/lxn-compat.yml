@@ -33,3 +33,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm -F @shared/scripts build:desktop
+      - run: pnpm -F @shared/scripts build:web
