@@ -611,6 +611,13 @@ declare global {
        */
       'sync.webdav.syncEnable.dislike': boolean
 
+      /** LX-N (Android) WebDAV playlist interoperability: disabled by default. */
+      'sync.lxn.enable': boolean
+      'sync.lxn.writeEnabled': boolean
+      'sync.lxn.path': string
+      'sync.lxn.baselineRemote': string
+      'sync.lxn.baselineLocal': string
+
       /** 备份路径 */
       'backup.backupPath': string
 

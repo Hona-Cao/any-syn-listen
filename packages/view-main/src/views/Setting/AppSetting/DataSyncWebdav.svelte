@@ -4,13 +4,31 @@
   import { useSettingValue } from '@/modules/setting/reactive.svelte'
   import { updateSetting } from '@/modules/setting/store/action'
   import Checkbox from '@/components/base/Checkbox.svelte'
-  import { runSyncWebDAV } from '@/shared/ipc/sync'
+  import { runSyncWebDAV, runLXNSync } from '@/shared/ipc/sync'
   import Input from '@/components/base/Input.svelte'
   import { settingState } from '@/modules/setting/store/state'
   import { useSyncWebDAVState } from '@/modules/sync/reactive.svelte'
   import { dateFormat } from '@/shared'
   import { showDataMergeModeModal } from '@/components/apis/dataMergeModeModal'
   import Btn from '@/components/base/Btn.svelte'
+  const lxnEnable = useSettingValue('sync.lxn.enable')
+  const lxnWriteEnabled = useSettingValue('sync.lxn.writeEnabled')
+  let lxnPath = $state(settingState.setting['sync.lxn.path'])
+  let lxnBusy = $state(false)
+  let lxnMessage = $state('')
+  const syncLXNow = async () => {
+    lxnBusy = true
+    lxnMessage = ''
+    try {
+      const result = await runLXNSync()
+      lxnMessage = result.action === 'downloaded' ? '已从 LX-N 下载歌单' :
+        result.action === 'uploaded' ? '已上传歌单到 LX-N' : '歌单已是最新'
+    } catch (err) {
+      lxnMessage = err instanceof Error ? err.message : String(err)
+    } finally {
+      lxnBusy = false
+    }
+  }
   const webdavEnable = useSettingValue('sync.webdav.enable')
   const webdavDebugEnable = useSettingValue('sync.webdav.debugEnable')
   const webdavUrl = useSettingValue('sync.webdav.url')
@@ -170,6 +188,32 @@
         <p class="small">{webdavStateText}</p>
       {/if}
     </div>
+  </div>
+  <div class="settings-item-content">
+    <h3>LX-N 手机端歌单互通</h3>
+    <p class="small">独立于 Any Listen 快照同步。复用上面的 WebDAV 服务器与账号，首次同步只读取手机端数据。只操作「LX-N ·」镜像歌单，不覆盖原有收藏。</p>
+    <div class="gap-top">
+      <Checkbox label="启用 LX-N 同步" id="settings.sync.lxn.enable" checked={lxnEnable.val}
+        onchange={async (val) => updateSetting({ 'sync.lxn.enable': val })}/>
+    </div>
+    <div class="gap-top">
+      <Input id="settings.sync.lxn.path" class="input-url" value={lxnPath}
+        placeholder="/LX_Music/" onchange={(val) => { lxnPath = val }}
+        onblur={() => { void updateSetting({ 'sync.lxn.path': lxnPath }) }}/>
+    </div>
+    <div class="gap-top">
+      <Checkbox label="允许双向写入（修改 LX-N 镜像歌单将上传至手机端 WebDAV）"
+        id="settings.sync.lxn.write" checked={lxnWriteEnabled.val}
+        onchange={async (val) => updateSetting({ 'sync.lxn.writeEnabled': val })}/>
+    </div>
+    <div class="gap-top">
+      <Btn disabled={!lxnEnable.val || !webdavUrl.val || !webdavUsername.val || lxnBusy}
+        onclick={syncLXNow}>{lxnBusy ? '同步中…' : '立即同步 LX-N'}</Btn>
+    </div>
+    {#if lxnMessage}
+      <p class="small" role="status">{lxnMessage}</p>
+    {/if}
+    <p class="small">注意：若两端同时修改，程序会拒绝覆盖。普通 WebDAV 无法保证原子写入；首次使用请备份手机端 playlists.json。</p>
   </div>
 </TitleContent>
 
