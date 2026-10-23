@@ -1,4 +1,4 @@
-import { getSyncWebDAVState, onWebDAVSyncStatusChanged, runSyncWebDAV } from '@/app/modules/sync'
+import { getSyncWebDAVState, onWebDAVSyncStatusChanged, runSyncWebDAV, runLXNSync } from '@/app/modules/sync'
 import { broadcast } from '@/modules/ipc/websocket'
 
 import type { ExposeServerFunctions, ExposeClientFunctions } from '.'
@@ -15,6 +15,9 @@ export const createExposeSync = () => {
           nextSyncTime: webdavState.nextSyncTime,
         },
       }
+    },
+    async runLXNSync() {
+      return runLXNSync()
     },
     async runSyncWebDAV(event, getListMergeMode, getDislikeMergeMode) {
       return runSyncWebDAV(getListMergeMode, getDislikeMergeMode)
