@@ -12,6 +12,7 @@ declare namespace AnyListen {
 
     type ServerActions = WarpPromiseRecord<{
       getSyncState: () => SyncState
+      runLXNSync: () => Promise<{ action: 'downloaded' | 'uploaded' | 'unchanged'; listCount: number; remoteTimestamp: number }>
       runSyncWebDAV: (
         getListMergeMode?: () => Promise<List.MergeMode>,
         getDislikeMergeMode?: () => Promise<Dislike.MergeMode>

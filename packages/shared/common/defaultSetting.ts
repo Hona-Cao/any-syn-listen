@@ -126,6 +126,11 @@ const defaultSetting: AnyListen.AppSetting = {
   'sync.webdav.path': '',
   'sync.webdav.syncEnable.list': true,
   'sync.webdav.syncEnable.dislike': true,
+  'sync.lxn.enable': false,
+  'sync.lxn.writeEnabled': false,
+  'sync.lxn.path': '/LX_Music/',
+  'sync.lxn.baselineRemote': '',
+  'sync.lxn.baselineLocal': '',
 
   'backup.backupPath': '',
 
