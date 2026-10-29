@@ -11,10 +11,10 @@ const rootPath = path.join(__dirname, '../../..')
  * @see https://www.electron.build/configuration/configuration
  */
 const options = {
-  appId: 'cn.toside.anylisten.desktop',
-  productName: 'any-listen',
+  appId: 'app.anysynlisten.lxn-test.desktop',
+  productName: 'AnySynListen-LXN-Test',
   extraMetadata: {
-    name: 'any-listen',
+    name: 'anysynlisten-lxn-test',
     main: 'dist/electron/main.js',
     description: 'A cross-platform private music playback service',
     author: {
@@ -25,8 +25,8 @@ const options = {
   beforePack,
   afterPack,
   protocols: {
-    name: 'anylisten-protocol',
-    schemes: ['anylisten'],
+    name: 'anysynlisten-lxn-test-protocol',
+    schemes: ['anysynlisten-lxn-test'],
   },
   directories: {
     buildResources: './resources',
@@ -50,8 +50,8 @@ const options = {
   publish: [
     {
       provider: 'github',
-      owner: 'any-listen',
-      repo: 'any-listen-desktop',
+      owner: 'Hona-Cao',
+      repo: 'any-syn-listen',
     },
   ],
 }
@@ -72,7 +72,7 @@ const winOptions = {
     allowToChangeInstallationDirectory: true,
     differentialPackage: true,
     license: './licenses/license.rtf',
-    shortcutName: 'Any Listen',
+    shortcutName: 'AnySynListen LX-N Test',
     artifactName: `\${productName}-\${version}-\${arch}-Setup.\${ext}`,
     installerSidebar: './resources/install_bg3.bmp',
   },

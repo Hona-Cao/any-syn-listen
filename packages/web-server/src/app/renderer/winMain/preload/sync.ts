@@ -16,6 +16,9 @@ export const createExposeSync = (client: ClientCall) => {
 // 暴露给前端的方法
 export const createClientSync = (ipcSocket: IPCSocket) => {
   return {
+    async runLXNSync(resolution) {
+      return ipcSocket.remoteQueueSync.runLXNSync(resolution)
+    },
     async getSyncState() {
       return ipcSocket.remoteQueueSync.getSyncState()
     },

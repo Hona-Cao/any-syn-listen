@@ -14,6 +14,9 @@ export const createExposeSync = (client: ClientCall) => {
 // 暴露给前端的方法
 export const createClientSync = (main: MainCall) => {
   return {
+    async runLXNSync(resolution) {
+      return main.runLXNSync(resolution)
+    },
     async getSyncState() {
       return main.getSyncState()
     },

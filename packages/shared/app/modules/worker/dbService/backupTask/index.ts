@@ -21,9 +21,15 @@ import type { BackupTrigger } from './types'
 
 let currentBackupTask: Promise<boolean> | null = null
 let isInited = false
+let automaticBackupsEnabled = true
+
+/** Test-build option: disable event, startup and scheduled SQLite backups. */
+export const configureAutomaticBackups = (enabled: boolean) => {
+  automaticBackupsEnabled = enabled
+}
 
 const backup = async (db: Database.Database, trigger: BackupTrigger): Promise<boolean> => {
-  if (currentBackupTask) return false
+  if (!automaticBackupsEnabled || currentBackupTask) return false
 
   const backupType = resolveBackupType(trigger)
   const isDailyBackup = backupType == 'daily'
@@ -72,6 +78,7 @@ const backup = async (db: Database.Database, trigger: BackupTrigger): Promise<bo
 }
 
 export const breakChangeBackup = async (db: Database.Database) => {
+  if (!automaticBackupsEnabled) return
   if (currentBackupTask) {
     await currentBackupTask
     return
@@ -117,7 +124,7 @@ const setupEventBackupTrigger = (db: Database.Database) => {
 }
 
 export const initBackupTask = async (db: Database.Database) => {
-  if (isInited) return
+  if (!automaticBackupsEnabled || isInited) return
   isInited = true
 
   setupEventBackupTrigger(db)

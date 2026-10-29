@@ -1,0 +1,57 @@
+name: LX-N isolated Windows portable (no Codex)
+on:
+  push:
+    branches: [feat/lxn-webdav-interop-clean]
+    paths:
+      - 'packages/**'
+      - 'tests/lxnProtocol.test.mjs'
+      - '.github/workflows/lxn-windows-portable.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Windows x64 EXE
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install workspace and native dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Assert test build cannot replace official Any Listen
+        shell: pwsh
+        run: |
+          $pack = Get-Content 'packages/desktop/build-config/build-pack.cjs' -Raw
+          $app = Get-Content 'packages/desktop/src/app/index.ts' -Raw
+          if (-not $pack.Contains("appId: 'app.anysynlisten.lxn-test.desktop'")) { throw 'Distinct appId missing' }
+          if (-not $pack.Contains("productName: 'AnySynListen-LXN-Test'")) { throw 'Distinct product name missing' }
+          if (-not $app.Contains('AnySynListenLXNTestDatas')) { throw 'Distinct user data folder missing' }
+          if (-not $app.Contains("app.setAsDefaultProtocolClient('anysynlisten-lxn-test')")) { throw 'Distinct protocol missing' }
+          if ($app.Contains('startCheckUpdateTimeout()')) { throw 'Official automatic updater still enabled' }
+      - name: Verify LX-N conversion tests
+        run: node --experimental-strip-types --test tests/lxnProtocol.test.mjs tests/listBatch.test.mjs
+      - name: Bundle app
+        run: pnpm -F @shared/scripts build:desktop
+      - name: Package unsigned portable Windows x64
+        run: pnpm -F desktop pack:win:portable:x64
+      - name: Verify output exists
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Filter '*portable.exe' -File
+          if (-not $exe) { throw 'No portable EXE produced' }
+          $exe | Format-Table Name, Length
+      - name: Upload Windows portable test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnySynListen-LXN-LatestOnly-Windows-x64
+          path: build/*portable.exe
+          retention-days: 14
+          if-no-files-found: error

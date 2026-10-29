@@ -60,10 +60,10 @@ const defaultSetting: AnyListen.AppSetting = {
   'player.ignoreLocalLyrics': false,
 
   'playDetail.isZoomActiveLrc': true,
-  'playDetail.style.fontSize': 100,
+  'playDetail.style.fontSize': 80,
   'playDetail.style.align': 'left',
-  'playDetail.style.fontWeight': true,
-  'playDetail.isDelayScroll': true,
+  'playDetail.style.fontWeight': false,
+  'playDetail.isDelayScroll': false,
   'playDetail.isDynamicBackground': true,
   'playDetail.coverStyle': 'cd',
 
@@ -126,6 +126,11 @@ const defaultSetting: AnyListen.AppSetting = {
   'sync.webdav.path': '',
   'sync.webdav.syncEnable.list': true,
   'sync.webdav.syncEnable.dislike': true,
+  'sync.lxn.enable': false,
+  'sync.lxn.writeEnabled': false,
+  'sync.lxn.path': '/LX_Music/',
+  'sync.lxn.baselineRemote': '',
+  'sync.lxn.baselineLocal': '',
 
   'backup.backupPath': '',
 
