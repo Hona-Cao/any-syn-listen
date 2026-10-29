@@ -1,0 +1,66 @@
+name: LX-N WebDAV compatibility checks
+on:
+  push:
+    branches: [feat/lxn-webdav-interop-clean]
+  pull_request:
+    paths:
+      - 'packages/shared/app/modules/sync/lxn/**'
+      - 'packages/desktop/src/modules/sync/**'
+      - 'packages/view-main/src/views/Setting/AppSetting/DataSyncWebdav.svelte'
+      - 'tests/lxnProtocol.test.mjs'
+      - '.github/workflows/lxn-compat.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --experimental-strip-types --test tests/lxnProtocol.test.mjs tests/listBatch.test.mjs
+  desktop-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm -F @shared/scripts build:desktop
+      - name: Check edited Svelte components (report upstream diagnostic noise)
+        shell: bash
+        run: |
+          # Upstream checkJs reports pre-existing errors in unrelated audio
+          # worklets. Keep a hard gate on edited code instead of concealing it.
+          set +e
+          pnpm -F view-main check > "$RUNNER_TEMP/svelte-check.log" 2>&1
+          check_status=$?
+          set -e
+          if awk '
+            /src\/components\/layout\/Aside\/MyList\/(Header|Menu|List|ListItem)\.svelte:[0-9]+:[0-9]+|src\/components\/layout\/Aside\/MyList\/batchUtils\.ts:[0-9]+:[0-9]+|src\/views\/Setting\/AppSetting\/DataSyncWebdav\.svelte:[0-9]+:[0-9]+/ {
+              location = $0
+              remaining = 5
+              next
+            }
+            remaining > 0 {
+              if ($0 ~ /Error:/) {
+                print location
+                print
+                found = 1
+              }
+              remaining--
+            }
+            END { exit found ? 0 : 1 }
+          ' "$RUNNER_TEMP/svelte-check.log"; then
+            echo "::error::Type errors found in modified components"
+            exit 1
+          fi
+          if [ "$check_status" -ne 0 ]; then
+            echo "::warning::Upstream full svelte-check reports unrelated pre-existing diagnostics; no changed UI files reported."
+          fi

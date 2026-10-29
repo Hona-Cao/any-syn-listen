@@ -1,5 +1,7 @@
 import {
   getSyncWebDAVState,
+  runLXSync,
+  type LXSyncResolution,
   runSyncWebDAV as runSyncWebDAVOriginal,
   cancelWebDAVSyncTask,
   runWebDAVSyncTask,
@@ -7,10 +9,62 @@ import {
   syncWebDAVEvent,
 } from '@any-listen/app/modules/sync'
 
-import { appEvent, appState } from '@/app'
+import { appEvent, appState, updateSetting } from '@/app'
+
+let lxnTimer: ReturnType<typeof setTimeout> | undefined
+const runLXNAutoSync = async () => {
+  if (!appState.appSetting['sync.lxn.enable']) return
+  try { await runLXNSync() } catch (e) {
+    console.warn('[LX-N sync] auto-sync skipped:', e instanceof Error ? e.message : e)
+  }
+}
+const scheduleLXNAuto = () => {
+  if (lxnTimer) clearTimeout(lxnTimer)
+  lxnTimer = undefined
+  if (!appState.appSetting['sync.lxn.enable']) return
+  lxnTimer = setTimeout(() => {
+    void runLXNAutoSync().finally(scheduleLXNAuto)
+  }, 180_000)
+}
+export const runLXNSync = async (resolution?: LXSyncResolution) => {
+  const setting = appState.appSetting
+  if (!setting['sync.lxn.enable']) throw new Error('Enable LX-N sync first')
+  const result = await runLXSync({
+    url: setting['sync.webdav.url'],
+    username: setting['sync.webdav.username'],
+    password: setting['sync.webdav.password'],
+    path: setting['sync.lxn.path'],
+    baselineRemote: setting['sync.lxn.baselineRemote'],
+    baselineLocal: setting['sync.lxn.baselineLocal'],
+    writeEnabled: setting['sync.lxn.writeEnabled'],
+  }, resolution)
+  updateSetting({
+    'sync.lxn.baselineRemote': result.baselineRemote,
+    'sync.lxn.baselineLocal': result.baselineLocal,
+  })
+  return {
+    action: result.action,
+    listCount: result.listCount,
+    remoteTimestamp: result.remoteTimestamp,
+  }
+}
+
+/** LX-N uses a single playlists.json. Never run native snapshot uploads alongside it. */
+const disableNativeWebDAVWhenLXActive = () => {
+  const setting = appState.appSetting
+  if (!setting['sync.lxn.enable']) return
+  if (!setting['sync.webdav.enable'] &&
+      !setting['sync.webdav.syncEnable.list'] &&
+      !setting['sync.webdav.syncEnable.dislike']) return
+  updateSetting({
+    'sync.webdav.enable': false,
+    'sync.webdav.syncEnable.list': false,
+    'sync.webdav.syncEnable.dislike': false,
+  })
+}
 
 const init = (immediately?: boolean) => {
-  if (appState.appSetting['sync.webdav.enable']) {
+  if (appState.appSetting['sync.webdav.enable'] && !appState.appSetting['sync.lxn.enable']) {
     runWebDAVSyncTask(immediately)
   } else {
     cancelWebDAVSyncTask()
@@ -18,12 +72,17 @@ const init = (immediately?: boolean) => {
 }
 export const initSync = async () => {
   appEvent.on('updated_config', (keys, settings) => {
-    if (keys.includes('sync.webdav.enable')) {
+    if (keys.includes('sync.lxn.enable')) disableNativeWebDAVWhenLXActive()
+    if (keys.includes('sync.webdav.enable') || keys.includes('sync.lxn.enable')) {
       init()
     }
+    if (keys.some(key => key === 'sync.lxn.enable' || key === 'sync.lxn.path')) scheduleLXNAuto()
   })
   appEvent.on('inited', () => {
+    disableNativeWebDAVWhenLXActive()
     init(true)
+    if (appState.appSetting['sync.lxn.enable']) void runLXNAutoSync()
+    scheduleLXNAuto()
   })
 }
 
@@ -31,6 +90,9 @@ export const runSyncWebDAV = async (
   getListMergeMode: SyncWebDAVOptions['getListMergeMode'],
   getDislikeMergeMode: SyncWebDAVOptions['getDislikeMergeMode']
 ) => {
+  if (appState.appSetting['sync.lxn.enable']) {
+    throw new Error('LX-N single-file mode has disabled native WebDAV snapshot sync to prevent extra versions.')
+  }
   return runSyncWebDAVOriginal(
     {
       url: appState.appSetting['sync.webdav.url'],

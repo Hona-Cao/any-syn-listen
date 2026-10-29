@@ -15,7 +15,7 @@ import { rendererIPC } from '@/renderer/winMain/rendererEvent'
 import { buildElectronProxyConfig, trashItem } from '@/shared/electron'
 import { log, logger } from '@/shared/log'
 import { setProxyByHost } from '@/shared/request'
-import { startCheckUpdateTimeout, update } from '@/shared/update'
+import { update } from '@/shared/update'
 
 import { version } from '../../package.json'
 import { setSkipTrayQuit } from './actions'
@@ -102,7 +102,7 @@ export const setUserDataPath = async () => {
   }
 
   const userDataPath = app.getPath('userData')
-  appState.dataPath = path.join(userDataPath, 'AnyListenDatas')
+  appState.dataPath = path.join(userDataPath, 'AnySynListenLXNTestDatas')
 
   appState.cacheDataPath = `${appState.dataPath}/cache`
   appState.tempDataPath = `${appState.dataPath}/temp`
@@ -116,9 +116,9 @@ export const registerDeeplink = () => {
     // Set the path of electron.exe and your app.
     // These two additional parameters are only available on windows.
     // console.log(process.execPath, process.argv)
-    app.setAsDefaultProtocolClient('anylisten', process.execPath, process.argv.slice(1))
+    app.setAsDefaultProtocolClient('anysynlisten-lxn-test', process.execPath, process.argv.slice(1))
   } else {
-    app.setAsDefaultProtocolClient('anylisten')
+    app.setAsDefaultProtocolClient('anysynlisten-lxn-test')
   }
 
   // deep link
@@ -242,7 +242,7 @@ const listenerAppEvent = () => {
       void app.setProxy(buildElectronProxyConfig(appState.proxy.host, appState.proxy.port))
     } catch {}
     handleProxyChange()
-    if (process.env.NODE_ENV === 'production') void startCheckUpdateTimeout()
+    // Test build: no automatic updates from the official Any Listen releases.
   })
   appEvent.on('proxy_changed', (host, port, electronProxy) => {
     setProxyByHost(host, port)

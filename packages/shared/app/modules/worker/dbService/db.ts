@@ -4,7 +4,7 @@ import { DB_NAME, LIST_IDS } from '@any-listen/common/constants'
 import { removeDB, getDefaultAutoBackupPath } from '@any-listen/nodejs/tools'
 import Database from 'better-sqlite3'
 
-import { initBackupTask, initBackupPath } from './backupTask'
+import { initBackupTask, initBackupPath, configureAutomaticBackups } from './backupTask'
 import migrateData from './migrate'
 import tables, { DB_VERSION } from './tables'
 import verifyDB from './verifyDB'
@@ -41,7 +41,8 @@ export const init = async (
   dataPath: string,
   nativeBindingPath: string,
   machineId: string,
-  backupPath?: string
+  backupPath?: string,
+  automaticBackupsEnabled = true
 ): Promise<boolean | null> => {
   const databasePath = path.join(dataPath, DB_NAME)
   const nativeBinding = path.join(__dirname, nativeBindingPath)
@@ -73,8 +74,11 @@ export const init = async (
     db.close()
     return null
   }
-  initBackupPath(getDefaultAutoBackupPath(dataPath), backupPath || '')
-  await initBackupTask(db)
+  configureAutomaticBackups(automaticBackupsEnabled)
+  if (automaticBackupsEnabled) {
+    initBackupPath(getDefaultAutoBackupPath(dataPath), backupPath || '')
+    await initBackupTask(db)
+  }
 
   // https://www.sqlite.org/lang_vacuum.html
   // db.exec('VACUUM "main"')

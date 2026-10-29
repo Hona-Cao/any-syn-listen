@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 // import { writeFileSync } from 'atomically'
 import path from 'node:path'
 
@@ -26,18 +25,12 @@ export const getStore = (name: string, isIgnoredError = true, isShowErrorAlert =
     const error = err as Error
     log.error(error)
 
-    if (!isIgnoredError) throw error
-
-    const backupPath = `${storePath}.bak`
-    fs.renameSync(storePath, backupPath)
+    // Latest-only test mode: leave malformed data untouched, never create .bak.
+    void isIgnoredError
     if (isShowErrorAlert) {
-      log.warn(`${name} data load error`)
-      log.warn(
-        `We have helped you back up the old ${name} file to: ${backupPath}\nYou can try to repair and restore it manually\n\nError detail: ${error.message}`
-      )
+      log.warn(`${name} data load error; original store preserved and no backup was generated: ${storePath}`)
     }
-
-    store = new Store(storePath, true)
+    throw error
   }
   return store
 }

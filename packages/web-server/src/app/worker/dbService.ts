@@ -1,11 +1,7 @@
-import path from 'node:path'
-
 import { startDBServiceWorker as _startDBServiceWorker, workers } from '@any-listen/app/modules/worker'
-import { DB_NAME } from '@any-listen/common/constants'
 import { getNativeName } from '@any-listen/nodejs'
 
 // import { log } from '@/shared/log'
-import { i18n } from '@/app/i18n'
 import { appLog } from '@/shared/log4js'
 
 import { appState } from '../app'
@@ -14,13 +10,11 @@ const initServices = async (dataPath: string) => {
   let nativeBindingPath = `../native/${getNativeName()}/better_sqlite3.node`
   if (import.meta.env.DEV) nativeBindingPath = '../node_modules/better-sqlite3/build/Release/better_sqlite3.node'
 
-  let dbFileExists = await workers.dbService.init(dataPath, nativeBindingPath, appState.machineId)
+  let dbFileExists = await workers.dbService.init(dataPath, nativeBindingPath, appState.machineId, undefined, false)
   if (dbFileExists === null) {
-    const backupPath = path.join(dataPath, `${DB_NAME}.${Date.now()}.bak`)
-    appLog.warn(i18n.t('database_verify_failed'))
-    appLog.warn(i18n.t('database_verify_failed_detail', { backupPath }))
-    await workers.dbService.backupDB(dataPath, nativeBindingPath, backupPath)
-    await workers.dbService.init(dataPath, nativeBindingPath, appState.machineId)
+    const message = 'LX-N latest-only mode: database integrity check failed. Database preserved, no automatic backup or reset.'
+    appLog.error(message)
+    throw new Error(message)
   }
 }
 

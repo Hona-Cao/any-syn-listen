@@ -1,9 +1,8 @@
-import fs from 'node:fs'
 import path from 'node:path'
 
 import Store from '@any-listen/nodejs/Store'
 // import { writeFileSync } from 'atomically'
-import { dialog, shell } from 'electron'
+import { dialog } from 'electron'
 
 import { appState } from '@/app'
 import { log } from '@/shared/log'
@@ -27,20 +26,17 @@ export const getStore = (name: string, isIgnoredError = true, isShowErrorAlert =
     const error = err as Error
     log.error(error)
 
-    if (!isIgnoredError) throw error
-
-    const backupPath = `${storePath}.bak`
-    fs.renameSync(storePath, backupPath)
+    // In latest-only test mode do not create a .bak file or silently reset the store.
+    // Stop with the original file untouched, regardless of isIgnoredError.
+    void isIgnoredError
     if (isShowErrorAlert) {
       dialog.showMessageBoxSync({
         type: 'error',
         message: `${name} data load error`,
-        detail: `We have helped you back up the old ${name} file to: ${backupPath}\nYou can try to repair and restore it manually\n\nError detail: ${error.message}`,
+        detail: `The existing store file was left untouched and no backup was generated: ${storePath}\nError: ${error.message}`,
       })
-      shell.showItemInFolder(backupPath)
     }
-
-    store = new Store(storePath, true)
+    throw error
   }
   return store
 }
