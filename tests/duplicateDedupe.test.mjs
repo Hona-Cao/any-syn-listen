@@ -56,3 +56,8 @@ test('fingerprint changes after source metadata quality or music order changes',
 test('no duplicate creates empty deletion plan',()=>{
   assert.deepEqual(plan([entry(song('a'),0)],'quality'),{keepIds:[],removeIds:[],groupCount:0,timeFallbackGroups:0})
 })
+
+test('quality selection follows Any Listen source ordering, preferring FLAC over WAV',()=>{
+  const wav = song('wav',{quality:'wav'}),flac = song('flac',{quality:'flac'})
+  assert.ok(getMusicQualityRank(flac)>getMusicQualityRank(wav))
+})

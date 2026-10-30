@@ -19,7 +19,7 @@ export interface DuplicateRemovalPlan {
 
 const ranks: Record<string, number> = {
   '128k': 1, '192k': 2, '320k': 3,
-  flac: 4, sq: 4, wav: 5,
+  wav: 4, flac: 5, sq: 5,
   flac24bit: 6, hr: 6, hi_res: 6,
   dolby: 7, atmos: 7, master: 8,
 }
