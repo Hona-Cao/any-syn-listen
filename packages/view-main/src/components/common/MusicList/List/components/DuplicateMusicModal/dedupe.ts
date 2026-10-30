@@ -30,7 +30,7 @@ export const getMusicQualityRank = (song: AnyListen.Music.MusicInfo): number => 
   const meta = song.meta
   let rank = 0
   if (!song.isLocal) {
-    for (const [key, value] of Object.entries(meta.qualitys ?? {})) {
+    for (const [key, value] of Object.entries(song.meta.qualitys ?? {})) {
       if (value) rank = Math.max(rank, ranks[key.toLowerCase()] ?? 0)
     }
   }
@@ -41,7 +41,7 @@ export const getMusicQualityRank = (song: AnyListen.Music.MusicInfo): number => 
   for (const [name, value] of Object.entries(ranks)) {
     if (bitrate === name) rank = Math.max(rank, value)
   }
-  if (ext === 'wav' || ext === 'flac') rank = Math.max(rank, ranks[ext])
+  if (ext === 'wav' || ext === 'flac') rank = Math.max(rank, ranks[ext] ?? 0)
   if (ext === 'mp3' && rank === 0) rank = ranks['128k']
   return rank
 }
