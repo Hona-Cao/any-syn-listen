@@ -6,6 +6,7 @@
     info,
     onplay,
     onremove,
+    decision,
   }: {
     info: {
       id: string
@@ -14,6 +15,7 @@
     }
     onplay: () => void
     onremove?: () => Promise<void>
+    decision?: 'keep' | 'remove'
   } = $props()
 
   let nameLabel = buildMusicName(settingState.setting['download.fileName'], info.musicInfo.name, info.musicInfo.singer)
@@ -34,6 +36,9 @@
   </div>
   <div class="label">{sourceLabel}</div>
   <div class="label">{info.musicInfo.interval}</div>
+  {#if decision}
+    <div class="decision" class:remove={decision === 'remove'}>{decision === 'remove' ? '移除' : '保留'}</div>
+  {/if}
   <div class="btns">
     <Btn onclick={onplay} icon outline>
       <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 287.386 287.386">
@@ -107,6 +112,12 @@
     opacity: 0.5;
     // transform: rotate(45deg);
     // background-color:
+  }
+  .decision {
+    flex: none;
+    font-size: 11px;
+    color: var(--color-primary);
+    &.remove { color: var(--color-font-label); }
   }
   .btns {
     display: flex;
