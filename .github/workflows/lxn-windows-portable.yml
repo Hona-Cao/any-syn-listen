@@ -1,10 +1,11 @@
 name: LX-N isolated Windows portable (no Codex)
 on:
   push:
-    branches: [feat/lxn-webdav-interop-clean]
+    branches: [feat/lxn-webdav-interop-clean, feat/duplicate-batch-dedupe]
     paths:
       - 'packages/**'
       - 'tests/lxnProtocol.test.mjs'
+      - 'tests/duplicateDedupe.test.mjs'
       - '.github/workflows/lxn-windows-portable.yml'
   workflow_dispatch:
 permissions:
@@ -37,7 +38,7 @@ jobs:
           if (-not $app.Contains("app.setAsDefaultProtocolClient('anysynlisten-lxn-test')")) { throw 'Distinct protocol missing' }
           if ($app.Contains('startCheckUpdateTimeout()')) { throw 'Official automatic updater still enabled' }
       - name: Verify LX-N conversion tests
-        run: node --experimental-strip-types --test tests/lxnProtocol.test.mjs tests/listBatch.test.mjs
+        run: node --experimental-strip-types --test tests/lxnProtocol.test.mjs tests/listBatch.test.mjs tests/duplicateDedupe.test.mjs
       - name: Bundle app
         run: pnpm -F @shared/scripts build:desktop
       - name: Package unsigned portable Windows x64
@@ -51,7 +52,7 @@ jobs:
       - name: Upload Windows portable test build
         uses: actions/upload-artifact@v4
         with:
-          name: AnySynListen-LXN-LatestOnly-Windows-x64
+          name: AnySynListen-LXN-DuplicateCleanup-Windows-x64
           path: build/*portable.exe
           retention-days: 14
           if-no-files-found: error
