@@ -253,6 +253,9 @@ const handleGetListMusicsFromRemote = async (listId: string): Promise<AnyListen.
 export const getListMusics = async (listId: string | null, forceUpdate = false): Promise<AnyListen.Music.MusicInfo[]> => {
   if (!listId) return []
   if (!forceUpdate && musicLibraryState.allMusicList.has(listId)) return musicLibraryState.allMusicList.get(listId)!
+  // 强制更新时必须丢弃在途请求：那个请求可能是在本次改动（如删除歌曲）之前发出的，
+  // 复用它会拿到改动前的旧快照，导致界面看起来“没生效”。
+  if (forceUpdate) getListMusicsFromRemotePromiseMap.delete(listId)
   const list = await handleGetListMusicsFromRemote(listId).catch((err: Error) => {
     showNotify(i18n.t('lists__music_load_failed', { err: err.message }))
     throw err

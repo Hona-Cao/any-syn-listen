@@ -60,14 +60,29 @@
     }
   }
 
+  // 从本地列表剔除已删除项。删除接口成功后立刻调用一次，让界面无需等待刷新即可更新；
+  // 刷新结束后再调用一次，避免陈旧快照把已删除的歌曲又刷回列表。
+  const dropRemoved = (ids: string[]) => {
+    if (!ids.length) return
+    const removed = new Set(ids)
+    if (!duplicateList.some((item) => removed.has(item.id))) return
+    duplicateList = duplicateList.filter((item) => !removed.has(item.id))
+  }
+
+  const removeAndRefresh = async (ids: string[]) => {
+    await removeListMusics(listinfo.id, ids)
+    dropRemoved(ids)
+    await refresh()
+    dropRemoved(ids)
+  }
+
   const handleRemove = async (index: number) => {
     if (busy || loading || isReadOnly) return
     busy = true
     try {
       const music = duplicateList[index]?.musicInfo
       if (!music) return
-      await removeListMusics(listinfo.id, [music.id])
-      await refresh()
+      await removeAndRefresh([music.id])
     } catch (error) {
       showNotify('删除失败：' + (error instanceof Error ? error.message : String(error)))
     } finally {
@@ -76,8 +91,12 @@
   }
 
   const handleDedupe = async () => {
-    if (busy || loading || isReadOnly || !plan.removeIds.length) return
+    if (busy || loading || isReadOnly) return
     const ids = [...plan.removeIds]
+    if (!ids.length) {
+      showNotify('当前没有需要删除的重复歌曲')
+      return
+    }
     const currentFingerprint = fingerprint
     const ruleName = strategy === 'quality' ? '最高音质' : strategy === 'earliest' ? '最早加入' : '最晚加入'
     const fallbackNote = strategy !== 'quality' && plan.timeFallbackGroups
@@ -105,8 +124,7 @@
         await refresh()
         return
       }
-      await removeListMusics(listinfo.id, ids)
-      await refresh()
+      await removeAndRefresh(ids)
       showNotify('已删除 ' + ids.length + ' 首重复歌曲')
     } catch (error) {
       showNotify('去重失败：' + (error instanceof Error ? error.message : String(error)))
